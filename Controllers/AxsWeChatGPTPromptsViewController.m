@@ -2,19 +2,22 @@
 
 #import "AxsWeChatGPTConfig.h"
 #import "AxsWeChatGPTPrivate.h"
+#import "AxsWeChatGPTSettingItem.h"
 
 @implementation AxsWeChatGPTPromptsViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = @"提示词模板";
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc]
-        initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
-                             target:self
-                             action:@selector(axs_wechatgpt_addPreset)];
+    [self configureAppearanceWithTitle:@"提示词模板"];
+    [self axs_wechatgpt_rebuild];
 }
 
-- (NSArray<NSDictionary *> *)presets {
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self axs_wechatgpt_rebuild];
+}
+
+- (NSArray<NSDictionary *> *)axs_wechatgpt_presets {
     NSMutableArray<NSDictionary *> *result = [NSMutableArray array];
     for (id value in [[AxsWeChatGPTConfig shared] arrayForKey:AxsWeChatGPTPromptPresets]) {
         if (![value isKindOfClass:NSDictionary.class]) continue;
@@ -25,88 +28,89 @@
     return result;
 }
 
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    (void)tableView; (void)section; return (NSInteger)self.presets.count;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    (void)tableView; (void)section;
-    return @"点击模板启用，再次点击取消。左滑可编辑或删除；选中的提示词会用于手动对话及气泡 AI 回复。";
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    (void)tableView;
-    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
-                                                    reuseIdentifier:nil];
-    NSDictionary *item = self.presets[indexPath.row];
-    NSString *name = item[@"name"];
-    cell.textLabel.text = name;
-    cell.detailTextLabel.text = item[@"prompt"];
-    cell.detailTextLabel.numberOfLines = 2;
-    if ([name isEqualToString:[[AxsWeChatGPTConfig shared] stringForKey:AxsWeChatGPTActivePrompt]]) {
-        cell.accessoryType = UITableViewCellAccessoryCheckmark;
-    }
-    return cell;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    NSString *name = self.presets[indexPath.row][@"name"];
+- (void)axs_wechatgpt_rebuild {
     AxsWeChatGPTConfig *config = [AxsWeChatGPTConfig shared];
-    NSString *active = [config stringForKey:AxsWeChatGPTActivePrompt];
-    [config setString:[name isEqualToString:active] ? @"" : name forKey:AxsWeChatGPTActivePrompt];
-    [tableView reloadData];
-}
-
-- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    (void)tableView; (void)indexPath; return YES;
-}
-
-- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView
-    trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
-    (void)tableView;
     __weak typeof(self) weakSelf = self;
-    UIContextualAction *remove = [UIContextualAction
-        contextualActionWithStyle:UIContextualActionStyleDestructive
-                            title:@"删除"
-                          handler:^(__unused UIContextualAction *action,
-                                    __unused __kindof UIView *sourceView,
-                                    void (^completionHandler)(BOOL)) {
-        NSMutableArray *items = [weakSelf.presets mutableCopy];
-        if (indexPath.row >= (NSInteger)items.count) {
-            completionHandler(NO);
-            return;
+    NSString *active = [config stringForKey:AxsWeChatGPTActivePrompt];
+
+    NSMutableArray<AxsWeChatGPTSettingItem *> *items = [NSMutableArray array];
+    for (NSDictionary *preset in [self axs_wechatgpt_presets]) {
+        NSString *name = preset[@"name"];
+        NSString *prompt = preset[@"prompt"];
+        BOOL isActive = [name isEqualToString:active];
+        AxsWeChatGPTSettingItem *item =
+            [AxsWeChatGPTSettingItem actionItemWithTitle:(isActive ? [NSString stringWithFormat:@"✓ %@", name] : name)
+                                                iconName:@"text.quote"
+                                               iconColor:isActive ? [UIColor systemGreenColor]
+                                                                  : [UIColor systemPurpleColor]];
+        item.detail = prompt.length > 30 ? [[prompt substringToIndex:30] stringByAppendingString:@"…"] : prompt;
+        item.actionBlock = ^{ [weakSelf axs_wechatgpt_showActionsForPreset:preset]; };
+        [items addObject:item];
+    }
+
+    NSMutableArray<AxsWeChatGPTSettingSection *> *sections = [NSMutableArray array];
+    if (items.count) {
+        [sections addObject:[AxsWeChatGPTSettingSection sectionWithHeader:@"提示词模板" items:items]];
+    } else {
+        AxsWeChatGPTSettingItem *empty = [AxsWeChatGPTSettingItem
+            itemWithTitle:@"还没有模板"
+               iconName:@"exclamationmark.triangle"
+              iconColor:[UIColor systemOrangeColor]
+                 detail:@"点下方新增一条"];
+        [sections addObject:[AxsWeChatGPTSettingSection sectionWithHeader:@"提示词模板" items:@[empty]]];
+    }
+
+    AxsWeChatGPTSettingItem *add = [AxsWeChatGPTSettingItem actionItemWithTitle:@"新增提示词模板"
+                                                                       iconName:@"plus.circle.fill"
+                                                                      iconColor:[UIColor systemBlueColor]];
+    add.detail = active.length ? [NSString stringWithFormat:@"当前：%@", active] : @"当前：默认";
+    add.actionBlock = ^{ [weakSelf axs_wechatgpt_editPreset:nil]; };
+    [sections addObject:[AxsWeChatGPTSettingSection sectionWithHeader:@"管理" items:@[add]]];
+
+    self.sections = sections;
+    [self.tableView reloadData];
+}
+
+- (void)axs_wechatgpt_showActionsForPreset:(NSDictionary *)preset {
+    NSString *name = preset[@"name"];
+    BOOL isActive = [name isEqualToString:[[AxsWeChatGPTConfig shared] stringForKey:AxsWeChatGPTActivePrompt]];
+    __weak typeof(self) weakSelf = self;
+    UIAlertController *sheet = [UIAlertController
+        alertControllerWithTitle:name
+                         message:preset[@"prompt"]
+                  preferredStyle:UIAlertControllerStyleActionSheet];
+    [sheet addAction:[UIAlertAction actionWithTitle:(isActive ? @"取消启用" : @"启用此模板")
+                                             style:UIAlertActionStyleDefault
+        handler:^(__unused UIAlertAction *action) {
+        [[AxsWeChatGPTConfig shared] setString:isActive ? @"" : name forKey:AxsWeChatGPTActivePrompt];
+        [weakSelf axs_wechatgpt_rebuild];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"编辑" style:UIAlertActionStyleDefault
+        handler:^(__unused UIAlertAction *action) {
+        [weakSelf axs_wechatgpt_editPreset:preset];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive
+        handler:^(__unused UIAlertAction *action) {
+        NSArray *current = [weakSelf axs_wechatgpt_presets];
+        NSMutableArray *items = [current mutableCopy];
+        for (NSUInteger i = 0; i < items.count; i++) {
+            if ([items[i][@"name"] isEqualToString:name]) {
+                [items removeObjectAtIndex:i];
+                break;
+            }
         }
-        NSString *name = items[indexPath.row][@"name"];
-        [items removeObjectAtIndex:indexPath.row];
         AxsWeChatGPTConfig *config = [AxsWeChatGPTConfig shared];
         [config setArray:items forKey:AxsWeChatGPTPromptPresets];
-        if ([name isEqualToString:[config stringForKey:AxsWeChatGPTActivePrompt]]) {
+        if ([[config stringForKey:AxsWeChatGPTActivePrompt] isEqualToString:name]) {
             [config setString:@"" forKey:AxsWeChatGPTActivePrompt];
         }
-        [weakSelf.tableView reloadData];
-        completionHandler(YES);
-    }];
-    UIContextualAction *edit = [UIContextualAction
-        contextualActionWithStyle:UIContextualActionStyleNormal
-                            title:@"编辑"
-                          handler:^(__unused UIContextualAction *action,
-                                    __unused __kindof UIView *sourceView,
-                                    void (^completionHandler)(BOOL)) {
-        NSArray *items = weakSelf.presets;
-        if (indexPath.row < (NSInteger)items.count) {
-            [weakSelf axs_wechatgpt_editPreset:items[indexPath.row]];
-        }
-        completionHandler(YES);
-    }];
-    UISwipeActionsConfiguration *configuration =
-        [UISwipeActionsConfiguration configurationWithActions:@[remove, edit]];
-    configuration.performsFirstActionWithFullSwipe = NO;
-    return configuration;
-}
-
-- (void)axs_wechatgpt_addPreset {
-    [self axs_wechatgpt_editPreset:nil];
+        [weakSelf axs_wechatgpt_rebuild];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    sheet.popoverPresentationController.sourceView = self.view;
+    sheet.popoverPresentationController.sourceRect =
+        CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1.0, 1.0);
+    [self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (void)axs_wechatgpt_editPreset:(NSDictionary *)existing {
@@ -135,7 +139,8 @@
             axs_wechatgpt_alert(weakSelf, @"不能保存", @"名称和提示词内容均不能为空。");
             return;
         }
-        NSMutableArray *items = [weakSelf.presets mutableCopy];
+        NSArray *current = [weakSelf axs_wechatgpt_presets];
+        NSMutableArray *items = [current mutableCopy];
         for (NSDictionary *item in items) {
             if ([item[@"name"] isEqualToString:name] && ![item[@"name"] isEqualToString:oldName]) {
                 axs_wechatgpt_alert(weakSelf, @"名称重复", @"请换一个模板名称。");
@@ -156,7 +161,7 @@
         if (oldName && [[config stringForKey:AxsWeChatGPTActivePrompt] isEqualToString:oldName]) {
             [config setString:name forKey:AxsWeChatGPTActivePrompt];
         }
-        [weakSelf.tableView reloadData];
+        [weakSelf axs_wechatgpt_rebuild];
     }]];
     [self presentViewController:alert animated:YES completion:nil];
 }

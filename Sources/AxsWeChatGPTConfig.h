@@ -9,7 +9,6 @@ NS_ASSUME_NONNULL_BEGIN
 extern NSString * const AxsWeChatGPTConfigDidChangeNotification;
 
 FOUNDATION_EXPORT NSString * const AxsWeChatGPTManualMenuEnabled;
-FOUNDATION_EXPORT NSString * const AxsWeChatGPTReadChatHistoryEnabled;
 FOUNDATION_EXPORT NSString * const AxsWeChatGPTChatHistoryCount;
 FOUNDATION_EXPORT NSString * const AxsWeChatGPTPrefix;
 FOUNDATION_EXPORT NSString * const AxsWeChatGPTPromptPresets;

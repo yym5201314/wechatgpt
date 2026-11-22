@@ -44,36 +44,19 @@
             [config axs_wechatgpt_setEnabled:isOn];
         }]];
     [featureItems addObject:
-        [AxsWeChatGPTSettingItem switchItemWithTitle:@"长按菜单 AI 回复"
+        [AxsWeChatGPTSettingItem switchItemWithTitle:@"长按气泡AI回复"
                                             iconName:@"bubble.left.fill"
                                            iconColor:[UIColor systemBlueColor]
                                          switchValue:[config boolForKey:AxsWeChatGPTManualMenuEnabled]
                                    valueChangedBlock:^(BOOL isOn) {
             [config setBool:isOn forKey:AxsWeChatGPTManualMenuEnabled];
         }]];
-    [featureItems addObject:
-        [AxsWeChatGPTSettingItem switchItemWithTitle:@"读取聊天记录"
-                                            iconName:@"clock.arrow.circlepath"
-                                           iconColor:[UIColor systemOrangeColor]
-                                         switchValue:[config boolForKey:AxsWeChatGPTReadChatHistoryEnabled]
-                                   valueChangedBlock:^(BOOL isOn) {
-            [config setBool:isOn forKey:AxsWeChatGPTReadChatHistoryEnabled];
-            [weakSelf axs_wechatgpt_rebuild];
-        }]];
-    BOOL historyOn = [config boolForKey:AxsWeChatGPTReadChatHistoryEnabled];
     AxsWeChatGPTSettingItem *countItem =
         [AxsWeChatGPTSettingItem actionItemWithTitle:@"读取条数"
-                                            iconName:@"list.number"
-                                           iconColor:[UIColor systemGrayColor]];
-    countItem.detail = historyOn
-        ? [NSString stringWithFormat:@"%ld 条", (long)[config historyMessageCount]]
-        : @"随读取开关";
-    countItem.actionBlock = ^{
-        if (![[AxsWeChatGPTConfig shared] boolForKey:AxsWeChatGPTReadChatHistoryEnabled]) {
-            return;
-        }
-        [weakSelf axs_wechatgpt_editHistoryCount];
-    };
+                                            iconName:@"clock.arrow.circlepath"
+                                           iconColor:[UIColor systemOrangeColor]];
+    countItem.detail = [NSString stringWithFormat:@"%ld 条", (long)[config historyMessageCount]];
+    countItem.actionBlock = ^{ [weakSelf axs_wechatgpt_editHistoryCount]; };
     [featureItems addObject:countItem];
     [sections addObject:[AxsWeChatGPTSettingSection sectionWithHeader:@"功能面板" items:featureItems]];
 
@@ -87,7 +70,7 @@
         : @"未配置";
     providerItem.actionBlock = ^{
         [weakSelf.navigationController
-            pushViewController:[[AxsWeChatGPTProvidersViewController alloc] initWithStyle:UITableViewStyleInsetGrouped]
+            pushViewController:[[AxsWeChatGPTProvidersViewController alloc] init]
                       animated:YES];
     };
 
@@ -109,7 +92,7 @@
     promptItem.detail = activePrompt.length ? activePrompt : @"默认";
     promptItem.actionBlock = ^{
         [weakSelf.navigationController
-            pushViewController:[[AxsWeChatGPTPromptsViewController alloc] initWithStyle:UITableViewStyleInsetGrouped]
+            pushViewController:[[AxsWeChatGPTPromptsViewController alloc] init]
                       animated:YES];
     };
     [sections addObject:[AxsWeChatGPTSettingSection sectionWithHeader:@"AI 接口"
@@ -120,7 +103,7 @@
 }
 
 - (void)axs_wechatgpt_editHistoryCount {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"读取聊天记录条数"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"读取条数"
                                                                    message:nil
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {

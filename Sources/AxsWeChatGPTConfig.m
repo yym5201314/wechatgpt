@@ -4,7 +4,6 @@
 NSString * const AxsWeChatGPTConfigDidChangeNotification = @"com.axs.wechatgpt.config-changed";
 
 NSString * const AxsWeChatGPTManualMenuEnabled = @"manualMenuEnabled";
-NSString * const AxsWeChatGPTReadChatHistoryEnabled = @"readChatHistoryEnabled.v075";
 NSString * const AxsWeChatGPTChatHistoryCount = @"chatHistoryCount.v075";
 NSString * const AxsWeChatGPTPrefix = @"prefix";
 NSString * const AxsWeChatGPTPromptPresets = @"promptPresets";
@@ -33,10 +32,26 @@ static NSString * const kLegacyService = @"com.standalone.wechatgpt.provider-key
     if ((self = [super init])) {
         _defaults = [[NSUserDefaults alloc] initWithSuiteName:kSuite];
         [self migrateLegacySuite];
+        // Preset templates are written once, before registerDefaults, so an empty
+        // registered default cannot mask them. Legacy templates win if present.
+        if (![_defaults objectForKey:AxsWeChatGPTPromptPresets]) {
+            [_defaults setObject:@[
+                @{@"name": @"日常聊天",
+                  @"prompt": @"用自然、口语化的中文回复，简短直接，不要客套话和总结。"},
+                @{@"name": @"翻译",
+                  @"prompt": @"判断对方使用的语言，翻译成另一种语言（中文与英文互译），只输出译文，不要解释。"},
+                @{@"name": @"润色",
+                  @"prompt": @"在保持原意和语气的前提下润色这段文字，修正语病与标点，只输出润色后的文本。"},
+                @{@"name": @"要点总结",
+                  @"prompt": @"用三句话总结对方消息的要点，最后给出一条可执行的建议。"},
+                @{@"name": @"礼貌拒绝",
+                  @"prompt": @"帮我想一个得体的拒绝回复：表达感谢、说明暂时做不到，不承诺时间，语气友好不生硬。"},
+            ] forKey:AxsWeChatGPTPromptPresets];
+        }
         [_defaults registerDefaults:@{
             kEnabled:@YES,
             AxsWeChatGPTManualMenuEnabled:@YES,
-            AxsWeChatGPTReadChatHistoryEnabled:@NO, AxsWeChatGPTChatHistoryCount:@10,
+            AxsWeChatGPTChatHistoryCount:@10,
             AxsWeChatGPTPrefix:@"",
             AxsWeChatGPTPromptPresets:@[], AxsWeChatGPTActivePrompt:@""
         }];
@@ -68,7 +83,7 @@ static NSString * const kLegacyService = @"com.standalone.wechatgpt.provider-key
         return;
     }
     for (NSString *key in @[kProviders, kActiveID, AxsWeChatGPTManualMenuEnabled,
-                            AxsWeChatGPTReadChatHistoryEnabled, AxsWeChatGPTChatHistoryCount,
+                            AxsWeChatGPTChatHistoryCount,
                             AxsWeChatGPTPrefix, AxsWeChatGPTPromptPresets, AxsWeChatGPTActivePrompt,
                             @"baseURL", @"model"]) {
         if ([_defaults objectForKey:key]) {

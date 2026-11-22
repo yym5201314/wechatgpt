@@ -307,10 +307,10 @@ static BOOL axs_wechatgpt_fillChatInput(UITextView *editor, UIWindow *window, NS
 - (NSString *)menuDiagnosticSummary {
     return [NSString stringWithFormat:
         @"模式：仅长按气泡手动 AI 回复\n气泡消息捕获：%lu 次\n菜单插入：%lu 次\n"
-         @"正在生成：%@\n历史读取：%@\n最后读取：%lu 条（双方）\n最后状态：%@\n\n%@",
+         @"正在生成：%@\n读取上限：%ld 条\n最后读取：%lu 条（双方）\n最后状态：%@\n\n%@",
         (unsigned long)self.capturedCount, (unsigned long)self.insertedCount,
         self.generatingReply ? @"是" : @"否",
-        [[AxsWeChatGPTConfig shared] boolForKey:AxsWeChatGPTReadChatHistoryEnabled] ? @"开启" : @"关闭",
+        (long)[[AxsWeChatGPTConfig shared] historyMessageCount],
         (unsigned long)self.lastContextCount,
         self.lastMenuStatus ?: @"等待点击 AI 回复",
         [AxsWeChatGPTMenuInjector diagnosticSummary]];
@@ -392,7 +392,8 @@ static BOOL axs_wechatgpt_fillChatInput(UITextView *editor, UIWindow *window, NS
     if (!window || !cell || !selectedText.length) return;
     NSUInteger serial = ++self.requestSerial;
     AxsWeChatGPTConfig *settings = [AxsWeChatGPTConfig shared];
-    BOOL includeHistory = [settings boolForKey:AxsWeChatGPTReadChatHistoryEnabled];
+    // Reading the recent chat history is the normal reply path; there is no
+    // separate switch, only the configurable message count.
     NSUInteger wanted = (NSUInteger)[settings historyMessageCount];
 
     // Allow the native menu to close before locating WeChat's input field.
@@ -404,7 +405,7 @@ static BOOL axs_wechatgpt_fillChatInput(UITextView *editor, UIWindow *window, NS
         NSArray<NSDictionary *> *history = @[];
         BOOL group = NO;
         self.lastContextCount = 0;
-        if (includeHistory) {
+        {
             NSDictionary *snapshot = [AxsWeChatGPTWeChatBridge recentOpenChatHistoryForCell:cell
                 selectedWrap:tappedWrap limit:wanted];
             history = [snapshot[@"messages"] isKindOfClass:NSArray.class] ? snapshot[@"messages"] : @[];
@@ -416,7 +417,7 @@ static BOOL axs_wechatgpt_fillChatInput(UITextView *editor, UIWindow *window, NS
             }
         }
         NSMutableArray<NSDictionary *> *messages = [NSMutableArray array];
-        if (includeHistory) {
+        {
             NSMutableString *transcript = [NSMutableString string];
             NSUInteger mineCount = 0, otherCount = 0, unknownCount = 0;
             for (NSDictionary *entry in history) {
@@ -444,16 +445,10 @@ static BOOL axs_wechatgpt_fillChatInput(UITextView *editor, UIWindow *window, NS
                 (unsigned long)history.count, (unsigned long)mineCount,
                 (unsigned long)otherCount, (unsigned long)unknownCount,
                 transcript, selectedText] }];
-        } else {
-            [messages addObject:@{ @"role":@"system", @"content":
-                @"你是微信聊天的回复助手。只根据点选的这条文字消息起草简短自然的回复。不要编造其他上下文，只输出回复正文。" }];
-            [messages addObject:@{ @"role":@"user", @"content":
-                [NSString stringWithFormat:@"请替我回复这条微信消息：\n%@", selectedText] }];
         }
         self.generatingReply = YES;
-        self.lastMenuStatus = includeHistory ?
-            [NSString stringWithFormat:@"已读取 %lu 条，等待 AI", (unsigned long)history.count] :
-            @"未启用历史读取，等待 AI";
+        self.lastMenuStatus = [NSString stringWithFormat:@"已读取 %lu 条，等待 AI",
+                               (unsigned long)history.count];
         __weak UITextView *weakInput = input;
         __weak UIWindow *weakWindow = window;
         [[AxsWeChatGPTClient shared] askWithMessages:messages completion:^(NSString *answer, NSError *error) {
