@@ -467,7 +467,7 @@ static void axs_wechatgpt_installGenerateHook(Class cls) {
     axs_wechatgpt_status([NSString stringWithFormat:@"已接入 %@", key]);
 }
 
-@implementation AxsWeChatGPTNativeMenu
+@implementation AxsWeChatGPTMenuInjector
 + (void)installIfAvailable {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{ [self installIfAvailable]; });

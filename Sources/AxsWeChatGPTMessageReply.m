@@ -313,7 +313,7 @@ static BOOL axs_wechatgpt_fillChatInput(UITextView *editor, UIWindow *window, NS
         [[AxsWeChatGPTConfig shared] boolForKey:AxsWeChatGPTReadChatHistoryEnabled] ? @"开启" : @"关闭",
         (unsigned long)self.lastContextCount,
         self.lastMenuStatus ?: @"等待点击 AI 回复",
-        [AxsWeChatGPTNativeMenu diagnosticSummary]];
+        [AxsWeChatGPTMenuInjector diagnosticSummary]];
 }
 
 - (void)captureNativeMenuCell:(id)cell {
