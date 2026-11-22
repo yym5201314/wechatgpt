@@ -62,31 +62,47 @@
     (void)tableView; (void)indexPath; return YES;
 }
 
-- (NSArray<UITableViewRowAction *> *)tableView:(UITableView *)tableView
-                  editActionsForRowAtIndexPath:(NSIndexPath *)indexPath {
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView
+    trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
     (void)tableView;
     __weak typeof(self) weakSelf = self;
-    UITableViewRowAction *remove = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive
-        title:@"删除"
-        handler:^(__unused UITableViewRowAction *action, NSIndexPath *path) {
+    UIContextualAction *remove = [UIContextualAction
+        contextualActionWithStyle:UIContextualActionStyleDestructive
+                            title:@"删除"
+                          handler:^(__unused UIContextualAction *action,
+                                    __unused __kindof UIView *sourceView,
+                                    void (^completionHandler)(BOOL)) {
         NSMutableArray *items = [weakSelf.presets mutableCopy];
-        if (path.row >= (NSInteger)items.count) return;
-        NSString *name = items[path.row][@"name"];
-        [items removeObjectAtIndex:path.row];
+        if (indexPath.row >= (NSInteger)items.count) {
+            completionHandler(NO);
+            return;
+        }
+        NSString *name = items[indexPath.row][@"name"];
+        [items removeObjectAtIndex:indexPath.row];
         AxsWeChatGPTConfig *config = [AxsWeChatGPTConfig shared];
         [config setArray:items forKey:AxsWeChatGPTPromptPresets];
         if ([name isEqualToString:[config stringForKey:AxsWeChatGPTActivePrompt]]) {
             [config setString:@"" forKey:AxsWeChatGPTActivePrompt];
         }
         [weakSelf.tableView reloadData];
+        completionHandler(YES);
     }];
-    UITableViewRowAction *edit = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleNormal
-        title:@"编辑"
-        handler:^(__unused UITableViewRowAction *action, NSIndexPath *path) {
+    UIContextualAction *edit = [UIContextualAction
+        contextualActionWithStyle:UIContextualActionStyleNormal
+                            title:@"编辑"
+                          handler:^(__unused UIContextualAction *action,
+                                    __unused __kindof UIView *sourceView,
+                                    void (^completionHandler)(BOOL)) {
         NSArray *items = weakSelf.presets;
-        if (path.row < (NSInteger)items.count) [weakSelf axs_wechatgpt_editPreset:items[path.row]];
+        if (indexPath.row < (NSInteger)items.count) {
+            [weakSelf axs_wechatgpt_editPreset:items[indexPath.row]];
+        }
+        completionHandler(YES);
     }];
-    return @[remove, edit];
+    UISwipeActionsConfiguration *configuration =
+        [UISwipeActionsConfiguration configurationWithActions:@[remove, edit]];
+    configuration.performsFirstActionWithFullSwipe = NO;
+    return configuration;
 }
 
 - (void)axs_wechatgpt_addPreset {
