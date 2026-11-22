@@ -1,0 +1,23 @@
+{
+  "schema": 2,
+  "name": "WeChatGPT",
+  "id": "wechatgpt",
+  "display_name": "WeChatGPT",
+  "class_prefix": "AxsWeChatGPT",
+  "symbol_prefix": "axs_wechatgpt",
+  "package": "com.axs.wechatgpt",
+  "bundle": "com.tencent.xin",
+  "sdk_version": "16.5",
+  "minimum_ios": "14.0",
+  "panel": true,
+  "entries": [
+    "plugins",
+    "settings"
+  ],
+  "follow_gate": false,
+  "auth": [],
+  "about": [],
+  "slider": false,
+  "color": false,
+  "github_actions": true
+}

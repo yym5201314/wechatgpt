@@ -2,7 +2,7 @@
 #import <UIKit/UIKit.h>
 NS_ASSUME_NONNULL_BEGIN
 // Native CMessageMgr GetLastMsgByCreateTime only. No UI scans or own database.
-@interface DGPTWeChatBridge : NSObject
+@interface AxsWeChatGPTWeChatBridge : NSObject
 // Fail closed: hide all custom long-press actions for groups or unknown chats.
 + (BOOL)isSingleChatCell:(UIView *)cell;
 + (NSString *)messagePlaceholderForWrap:(nullable id)wrap;

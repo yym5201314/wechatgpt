@@ -1,75 +1,102 @@
-name: Build zhushou
+name: Build WeChatGPT
 
-# 触发条件：当你推送到 main/master 分支，或者手动点击运行按钮时触发
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
       - master
-  pull_request:
-    branches:
-      - main
-      - master
-  workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+  THEOS: ${{ github.workspace }}/theos-roothide
+
 jobs:
   build:
-    name: Build iOS Tweak
-    runs-on: macos-latest 
-    env:
-      THEOS: ${{ github.workspace }}/theos 
+    name: Build (${{ matrix.build_variant }})
+    runs-on: macos-14
+    outputs:
+      package_version: ${{ steps.bump.outputs.package_version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # - build_variant: rootful
+          - build_variant: rootless
+          # - build_variant: roothide
 
     steps:
-      - name: 📥 检出代码 (Checkout Repository)
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.4'
+
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 🧾 预设版本 Bump package version
+      - name: Setup Environment
         run: |
-          VERSION_PREFIX="5.2.0"
-          VERSION_BASE=0
-          VERSION="${VERSION_PREFIX}-$((VERSION_BASE + ${{ github.run_number }}))"
+          echo "$THEOS/bin" >> "$GITHUB_PATH"
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+          echo "THEOS_IGNORE_PARALLEL_BUILDING_NOTICE=yes" >> "$HOME/.theosrc"
 
+      - name: Bump Package Version
+        id: bump
+        run: |
+          VERSION="5.2.0-${{ github.run_number }}"
           echo "Using version: $VERSION"
           sed -i '' "s/^Version: .*/Version: ${VERSION}/" control
-          echo "PACKAGE_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "package_version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-      - name: ⚙️ 安装依赖 (Install Dependencies)
+      - name: Checkout Theos (RootHide)
+        uses: actions/checkout@v4
+        with:
+          repository: roothide/theos
+          path: theos-roothide
+          submodules: recursive
+
+      - name: Install iOS SDK (iPhoneOS16.5)
         run: |
-          brew install ldid dpkg
+          set -euo pipefail
+          mkdir -p "$THEOS/sdks"
+          if [ -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
+            echo "iPhoneOS16.5.sdk already present"
+            exit 0
+          fi
+          SDK_STAGE="$(mktemp -d)"
+          trap 'rm -rf "$SDK_STAGE"' EXIT
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git "$SDK_STAGE/sdks"
+          git -C "$SDK_STAGE/sdks" sparse-checkout set iPhoneOS16.5.sdk
+          cp -R "$SDK_STAGE/sdks/iPhoneOS16.5.sdk" "$THEOS/sdks/"
+          ls -1 "$THEOS/sdks"
 
-      - name: 🛠️ 配置 Theos 环境 (Setup Roothide Theos)
+      - name: Install Theos dependencies
         run: |
-          echo "Cloning Roothide Theos fork..."
-          git clone --recursive https://github.com/roothide/theos.git $THEOS
+          brew install ldid dpkg xz
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
 
-      - name: 📦 下载 iOS SDK (Setup iOS SDKs)
+      - name: Build Package
         run: |
-          echo "Cloning iOS SDKs..."
-          rm -rf $THEOS/sdks
-          git clone https://github.com/theos/sdks.git $THEOS/sdks
+          sh build.sh "${{ matrix.build_variant }}"
+          echo "=== .deb files ==="
+          find ./packages -name "*.deb" -type f
 
-      - name: 🧾 读取软件包版本
-        run: |
-          VERSION=$(awk -F': ' '/^Version:/ {print $2; exit}' control)
-          echo "PACKAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.build_variant }}
+          path: ./packages/*.deb
+          if-no-files-found: error
 
-      - name: 🚀 运行编译脚本 (Run build.sh)
-        run: |
-          chmod +x build.sh
-          # 使用 sudo -E 提权执行
-          sudo -E ./build.sh
-
-      - name: ✅ 创建 Release
+      - name: Create Release
         if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || github.event_name == 'workflow_dispatch'
-        #if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')  //手动触发时，不创建 Release
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ github.token }}
-          tag_name: v${{ env.PACKAGE_VERSION }}
-          name: zhushou v${{ env.PACKAGE_VERSION }}
-          files: ${{ github.workspace }}/packages/*.deb
-          overwrite_files: false
-          fail_on_unmatched_files: true
+          tag_name: v${{ steps.bump.outputs.package_version }}
+          name: "WeChatGPT v${{ steps.bump.outputs.package_version }}"
+          files: ./packages/*.deb

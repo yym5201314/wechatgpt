@@ -1,11 +1,11 @@
-#import "DGPTClient.h"
-#import "DGPTConfig.h"
+#import "AxsWeChatGPTClient.h"
+#import "AxsWeChatGPTConfig.h"
 
-@implementation DGPTClient
+@implementation AxsWeChatGPTClient
 + (instancetype)shared {
-    static DGPTClient *shared;
+    static AxsWeChatGPTClient *shared;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ shared = [DGPTClient new]; });
+    dispatch_once(&once, ^{ shared = [AxsWeChatGPTClient new]; });
     return shared;
 }
 - (instancetype)init {
@@ -81,12 +81,12 @@
         [item[@"text"] isKindOfClass:NSString.class]) [chunks addObject:item[@"text"]];
     return [chunks componentsJoinedByString:@"\n"];
 }
-- (void)fetchModelsForURL:(NSString *)baseURL apiKey:(NSString *)apiKey completion:(DGPTModelsCompletion)completion {
+- (void)fetchModelsForURL:(NSString *)baseURL apiKey:(NSString *)apiKey completion:(AxsWeChatGPTModelsCompletion)completion {
     if (!completion) return;
     NSError *error = nil;
-    NSURL *url = [DGPTClient resolvedModelsEndpointForBaseURL:baseURL error:&error];
+    NSURL *url = [AxsWeChatGPTClient resolvedModelsEndpointForBaseURL:baseURL error:&error];
     if (!url) { completion(nil, error); return; }
-    if (!apiKey.length) { completion(nil, [DGPTClient problem:@"请先填写服务商的 API Key。"]); return; }
+    if (!apiKey.length) { completion(nil, [AxsWeChatGPTClient problem:@"请先填写服务商的 API Key。"]); return; }
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     request.HTTPMethod = @"GET";
     request.timeoutInterval = 30;
@@ -98,15 +98,15 @@
         id parsed = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
         NSDictionary *result = [parsed isKindOfClass:NSDictionary.class] ? parsed : nil;
         if (!http || http.statusCode < 200 || http.statusCode >= 300) {
-            NSString *detail = [DGPTClient errorMessage:result];
-            completion(nil, [DGPTClient problem:[NSString stringWithFormat:@"模型列表 HTTP %ld%@；地址 %@", (long)http.statusCode,
+            NSString *detail = [AxsWeChatGPTClient errorMessage:result];
+            completion(nil, [AxsWeChatGPTClient problem:[NSString stringWithFormat:@"模型列表 HTTP %ld%@；地址 %@", (long)http.statusCode,
                 detail.length ? [@"：" stringByAppendingString:detail] : @"", url.absoluteString]]);
             return;
         }
         id entries = result[@"data"];
         if (![entries isKindOfClass:NSArray.class]) entries = result[@"models"];
         if (![entries isKindOfClass:NSArray.class]) {
-            completion(nil, [DGPTClient problem:@"该服务商没有返回 OpenAI 兼容的 data 模型列表。"]); return;
+            completion(nil, [AxsWeChatGPTClient problem:@"该服务商没有返回 OpenAI 兼容的 data 模型列表。"]); return;
         }
         NSMutableSet<NSString *> *ids = [NSMutableSet set];
         for (id item in entries) {
@@ -116,19 +116,19 @@
         }
         NSArray *models = [[ids allObjects] sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
         if (!models.count) {
-            completion(nil, [DGPTClient problem:@"API 返回的模型列表为空，请确认服务商权限。"]); return;
+            completion(nil, [AxsWeChatGPTClient problem:@"API 返回的模型列表为空，请确认服务商权限。"]); return;
         }
         completion(models, nil);
     }] resume];
 }
 - (void)testProviderURL:(NSString *)baseURL apiKey:(NSString *)apiKey
-                   model:(NSString *)model completion:(DGPTCompletion)completion {
+                   model:(NSString *)model completion:(AxsWeChatGPTCompletion)completion {
     if (!completion) return;
     NSError *error = nil;
-    NSURL *url = [DGPTClient resolvedEndpointForBaseURL:baseURL error:&error];
+    NSURL *url = [AxsWeChatGPTClient resolvedEndpointForBaseURL:baseURL error:&error];
     if (!url) { completion(nil, error); return; }
     if (!apiKey.length || !model.length) {
-        completion(nil, [DGPTClient problem:@"请先输入 API Key 和模型。"]); return;
+        completion(nil, [AxsWeChatGPTClient problem:@"请先输入 API Key 和模型。"]); return;
     }
     NSDictionary *payload = @{
         @"model":model,
@@ -136,7 +136,7 @@
         @"stream":@NO
     };
     NSData *body = [NSJSONSerialization dataWithJSONObject:payload options:0 error:&error];
-    if (!body) { completion(nil, error ?: [DGPTClient problem:@"API 验证请求无法编码"]); return; }
+    if (!body) { completion(nil, error ?: [AxsWeChatGPTClient problem:@"API 验证请求无法编码"]); return; }
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     request.HTTPMethod = @"POST";
     request.timeoutInterval = 45;
@@ -149,62 +149,62 @@
         id parsed = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
         NSDictionary *json = [parsed isKindOfClass:NSDictionary.class] ? parsed : nil;
         if (!http || http.statusCode < 200 || http.statusCode >= 300) {
-            NSString *detail = [DGPTClient errorMessage:json];
+            NSString *detail = [AxsWeChatGPTClient errorMessage:json];
             if (!detail.length) detail = @"服务商未接受请求";
             if (detail.length > 260) detail = [[detail substringToIndex:260] stringByAppendingString:@"…"];
-            completion(nil, [DGPTClient problem:[NSString stringWithFormat:@"HTTP %ld：%@", (long)http.statusCode, detail]]);
+            completion(nil, [AxsWeChatGPTClient problem:[NSString stringWithFormat:@"HTTP %ld：%@", (long)http.statusCode, detail]]);
             return;
         }
         NSArray *choices = [json[@"choices"] isKindOfClass:NSArray.class] ? json[@"choices"] : nil;
         NSDictionary *choice = choices.count && [choices.firstObject isKindOfClass:NSDictionary.class] ? choices.firstObject : nil;
         NSDictionary *message = [choice[@"message"] isKindOfClass:NSDictionary.class] ? choice[@"message"] : nil;
-        NSString *answer = [DGPTClient extractText:message[@"content"]];
+        NSString *answer = [AxsWeChatGPTClient extractText:message[@"content"]];
         if (!answer.length) {
-            completion(nil, [DGPTClient problem:@"已连接服务商，但未得到 Chat Completions 文字回复。"]);
+            completion(nil, [AxsWeChatGPTClient problem:@"已连接服务商，但未得到 Chat Completions 文字回复。"]);
             return;
         }
         completion([NSString stringWithFormat:@"当前填写的接口和模型可用。回复：%@", answer], nil);
     }] resume];
 }
 
-- (void)ask:(NSString *)question completion:(DGPTCompletion)completion {
+- (void)ask:(NSString *)question completion:(AxsWeChatGPTCompletion)completion {
     if (!question.length) {
-        if (completion) completion(nil, [DGPTClient problem:@"消息内容为空"]);
+        if (completion) completion(nil, [AxsWeChatGPTClient problem:@"消息内容为空"]);
         return;
     }
     [self askWithMessages:@[@{@"role":@"user", @"content":question}] completion:completion];
 }
 
-- (void)askWithMessages:(NSArray<NSDictionary *> *)conversationMessages completion:(DGPTCompletion)completion {
+- (void)askWithMessages:(NSArray<NSDictionary *> *)conversationMessages completion:(AxsWeChatGPTCompletion)completion {
     [self submitMessages:conversationMessages applyReplyPreset:YES completion:completion];
 }
-- (void)askForAnalysisWithMessages:(NSArray<NSDictionary *> *)conversationMessages completion:(DGPTCompletion)completion {
+- (void)askForAnalysisWithMessages:(NSArray<NSDictionary *> *)conversationMessages completion:(AxsWeChatGPTCompletion)completion {
     [self submitMessages:conversationMessages applyReplyPreset:NO completion:completion];
 }
 - (void)submitMessages:(NSArray<NSDictionary *> *)conversationMessages
-      applyReplyPreset:(BOOL)applyReplyPreset completion:(DGPTCompletion)completion {
+      applyReplyPreset:(BOOL)applyReplyPreset completion:(AxsWeChatGPTCompletion)completion {
     if (!completion) return;
-    DGPTConfig *config = [DGPTConfig shared];
+    AxsWeChatGPTConfig *config = [AxsWeChatGPTConfig shared];
     NSDictionary *provider = [[config activeProvider] copy];
     NSString *pid = provider[@"id"];
     NSString *key = [config apiKeyForProviderID:pid ?: @""];
     NSString *model = [provider[@"model"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (!pid.length || !key.length || !model.length) {
-        completion(nil, [DGPTClient problem:@"请在服务商管理中设置 API Key，并拉取和选择模型。"]); return;
+        completion(nil, [AxsWeChatGPTClient problem:@"请在服务商管理中设置 API Key，并拉取和选择模型。"]); return;
     }
     if (![conversationMessages isKindOfClass:NSArray.class] || !conversationMessages.count) {
-        completion(nil, [DGPTClient problem:@"消息内容为空"]); return;
+        completion(nil, [AxsWeChatGPTClient problem:@"消息内容为空"]); return;
     }
     NSError *urlError = nil;
-    NSURL *url = [DGPTClient resolvedEndpointForBaseURL:provider[@"url"] error:&urlError];
+    NSURL *url = [AxsWeChatGPTClient resolvedEndpointForBaseURL:provider[@"url"] error:&urlError];
     if (!url) { completion(nil, urlError); return; }
 
     // The selected preset is the base system prompt. Callers may then add
     // conversation-specific system instructions and alternating history turns.
     NSMutableArray<NSDictionary *> *messages = [NSMutableArray array];
-    NSString *activeName = [config stringForKey:DGPTActivePrompt];
+    NSString *activeName = [config stringForKey:AxsWeChatGPTActivePrompt];
     if (applyReplyPreset && activeName.length) {
-        for (id value in [config arrayForKey:DGPTPromptPresets]) {
+        for (id value in [config arrayForKey:AxsWeChatGPTPromptPresets]) {
             if (![value isKindOfClass:NSDictionary.class]) continue;
             NSDictionary *item = (NSDictionary *)value;
             if (![item[@"name"] isKindOfClass:NSString.class] ||
@@ -225,7 +225,7 @@
         if ([role isEqualToString:@"user"]) hasUserMessage = YES;
     }
     if (!hasUserMessage) {
-        completion(nil, [DGPTClient problem:@"上下文中没有用户消息"]); return;
+        completion(nil, [AxsWeChatGPTClient problem:@"上下文中没有用户消息"]); return;
     }
 
     NSDictionary *body = @{
@@ -235,7 +235,7 @@
     };
     NSData *payload = [NSJSONSerialization dataWithJSONObject:body options:0 error:NULL];
     if (!payload.length) {
-        completion(nil, [DGPTClient problem:@"无法序列化聊天上下文"]); return;
+        completion(nil, [AxsWeChatGPTClient problem:@"无法序列化聊天上下文"]); return;
     }
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     request.HTTPMethod = @"POST";
@@ -249,18 +249,18 @@
         id parsed = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
         NSDictionary *json = [parsed isKindOfClass:NSDictionary.class] ? parsed : nil;
         if (!http || http.statusCode < 200 || http.statusCode >= 300) {
-            NSString *detail = [DGPTClient errorMessage:json];
+            NSString *detail = [AxsWeChatGPTClient errorMessage:json];
             if (!detail.length) detail = @"请求失败";
             if (detail.length > 260) detail = [[detail substringToIndex:260] stringByAppendingString:@"…"];
-            completion(nil, [DGPTClient problem:[NSString stringWithFormat:@"HTTP %ld: %@\n请求路径：%@", (long)http.statusCode, detail, url.path]]);
+            completion(nil, [AxsWeChatGPTClient problem:[NSString stringWithFormat:@"HTTP %ld: %@\n请求路径：%@", (long)http.statusCode, detail, url.path]]);
             return;
         }
         NSArray *choices = [json[@"choices"] isKindOfClass:NSArray.class] ? json[@"choices"] : nil;
         NSDictionary *choice = choices.count && [choices.firstObject isKindOfClass:NSDictionary.class] ? choices.firstObject : nil;
         NSDictionary *message = [choice[@"message"] isKindOfClass:NSDictionary.class] ? choice[@"message"] : nil;
-        NSString *answer = [DGPTClient extractText:message[@"content"]];
+        NSString *answer = [AxsWeChatGPTClient extractText:message[@"content"]];
         if (!answer.length) {
-            completion(nil, [DGPTClient problem:@"未收到 OpenAI choices[0].message.content，请检查模型是否支持 Chat Completions。"]);
+            completion(nil, [AxsWeChatGPTClient problem:@"未收到 OpenAI choices[0].message.content，请检查模型是否支持 Chat Completions。"]);
             return;
         }
         completion(answer, nil);

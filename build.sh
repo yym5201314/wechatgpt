@@ -1,16 +1,26 @@
-#!/bin/bash
-# 记得在终端执行: chmod +x build.sh
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")"
 
-echo ">>> 清理旧文件..."
-make clean
+if [ "$#" -eq 0 ]; then
+    set -- rootless
+elif [ "$#" -eq 1 ] && [ "$1" = all ]; then
+    set -- rootful rootless roothide
+fi
 
-#echo ">>> 正在编译 Rootful (有根) 版本..."
-#make package
+# Validate every scheme before starting a build.
+for scheme in "$@"; do
+    case "$scheme" in
+        rootful|rootless|roothide) ;;
+        *) printf 'Unknown scheme: %s\n' "$scheme" >&2; exit 2 ;;
+    esac
+done
 
-echo ">>> 正在编译 Rootless (无根) 版本..."
-make package THEOS_PACKAGE_SCHEME=rootless
-
-#echo ">>> 正在编译 Roothide (隐藏越狱) 版本..."
-#make package THEOS_PACKAGE_SCHEME=roothide
-
-echo ">>> 编译完成！所有版本已生成。"
+: "${THEOS:?Set THEOS to a compatible Theos toolchain first}"
+for scheme in "$@"; do
+    package_scheme="$scheme"
+    if [ "$scheme" = rootful ]; then package_scheme=""; fi
+    printf '\nBuilding %s\n' "$scheme"
+    make clean THEOS_PACKAGE_SCHEME="$package_scheme"
+    make package THEOS_PACKAGE_SCHEME="$package_scheme"
+done

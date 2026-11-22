@@ -1,9 +1,15 @@
 Package: com.axs.wechatgpt
-Name: zhushou
+Name: WeChatGPT
 Version: 5.2.0
 Architecture: iphoneos-arm
-Description: Chat assistant with native vertical-icon single-chat bubble menu and AI analysis.
+Description: 聊天助手，在微信原生长按消息菜单中追加「AI回复」「AI分析」。
+ 1. 生效范围：仅单聊文字气泡；群聊、图片、语音、表情等气泡不出现。
+ 2. 菜单入口：长按单聊文字气泡，菜单中出现「AI回复」「AI分析」。
+ 3. 面板入口：微信「设置」页首组新增「WeChatGPT」一行；装有插件管理器时另外出现在插件列表。
+ 4. 服务商配置：面板内「AI 接口」→「服务商与模型」，右上角 + 新增，填 URL 与 API Key，拉取并选择模型后保存。
 Maintainer: Axs
 Author: Axs
-Section: 微信插件
+Section: Axs-Tweaks
 Depends: mobilesubstrate
+Icon: https://axs66.github.io/pro/icon/wechat.png
+Sileodepiction: https://axs66.github.io/pro/sileodepiction/wechatgpt/js.json

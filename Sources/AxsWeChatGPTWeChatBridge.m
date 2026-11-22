@@ -1,5 +1,5 @@
-#import "DGPTWeChatBridge.h"
-#import "DGPTConfig.h"
+#import "AxsWeChatGPTWeChatBridge.h"
+#import "AxsWeChatGPTConfig.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <QuartzCore/QuartzCore.h>
@@ -11,15 +11,15 @@
 // GetLastMsgByCreateTime selector is invoked; no UI scan, alternate query,
 // database cache, send hooks or automatic reply.
 
-static const char *DGPTUnqualify(const char *t) {
+static const char *axs_wechatgpt_unqualify(const char *t) {
     while (t && *t && strchr("rnNoORV", *t)) t++;
     return t;
 }
-static BOOL DGPTIsInteger(const char *t) {
-    t = DGPTUnqualify(t);
+static BOOL axs_wechatgpt_isInteger(const char *t) {
+    t = axs_wechatgpt_unqualify(t);
     return t && t[0] && strchr("cCsSiIlLqQB", t[0]) != NULL;
 }
-static id DGPTSlot(id obj, NSString *name) {
+static id axs_wechatgpt_slot(id obj, NSString *name) {
     if (!obj || !name.length) return nil;
     Ivar ivar = class_getInstanceVariable([obj class], name.UTF8String);
     if (!ivar) ivar = class_getInstanceVariable([obj class], [@"_" stringByAppendingString:name].UTF8String);
@@ -30,22 +30,22 @@ static id DGPTSlot(id obj, NSString *name) {
     Method method = class_getInstanceMethod([obj class], selector);
     if (!method || method_getNumberOfArguments(method) != 2) return nil;
     char *ret = method_copyReturnType(method);
-    BOOL ok = ret && DGPTUnqualify(ret)[0] == '@';
+    BOOL ok = ret && axs_wechatgpt_unqualify(ret)[0] == '@';
     if (ret) free(ret);
     if (!ok) return nil;
     @try { return ((id (*)(id, SEL))objc_msgSend)(obj, selector); }
     @catch (__unused NSException *e) { return nil; }
 }
-static NSString *DGPTString(id obj, NSString *name) {
-    id v = DGPTSlot(obj, name);
+static NSString *axs_wechatgpt_string(id obj, NSString *name) {
+    id v = axs_wechatgpt_slot(obj, name);
     return [v isKindOfClass:NSString.class] ? v : @"";
 }
-static long long DGPTInt(id obj, NSString *name) {
+static long long axs_wechatgpt_int(id obj, NSString *name) {
     if (!obj || !name.length) return 0;
     Ivar ivar = class_getInstanceVariable([obj class], name.UTF8String);
     if (!ivar) ivar = class_getInstanceVariable([obj class], [@"_" stringByAppendingString:name].UTF8String);
-    if (ivar && DGPTIsInteger(ivar_getTypeEncoding(ivar))) {
-        const char *type = DGPTUnqualify(ivar_getTypeEncoding(ivar));
+    if (ivar && axs_wechatgpt_isInteger(ivar_getTypeEncoding(ivar))) {
+        const char *type = axs_wechatgpt_unqualify(ivar_getTypeEncoding(ivar));
         size_t width = 0;
         switch (*type) {
             case 'c': case 'C': case 'B': width = 1; break;
@@ -64,41 +64,41 @@ static long long DGPTInt(id obj, NSString *name) {
     Method method = class_getInstanceMethod([obj class], sel);
     if (!method || method_getNumberOfArguments(method) != 2) return 0;
     char *ret = method_copyReturnType(method);
-    BOOL ok = DGPTIsInteger(ret);
+    BOOL ok = axs_wechatgpt_isInteger(ret);
     if (ret) free(ret);
     if (!ok) return 0;
     @try { return ((long long (*)(id, SEL))objc_msgSend)(obj, sel); }
     @catch (__unused NSException *e) { return 0; }
 }
-static BOOL DGPTWrap(id obj) {
+static BOOL axs_wechatgpt_wrap(id obj) {
     Class cls = objc_getClass("CMessageWrap");
     return cls && obj && [obj isKindOfClass:cls];
 }
-static id DGPTWrapFrom(id obj) {
-    if (DGPTWrap(obj)) return obj;
+static id axs_wechatgpt_wrapFrom(id obj) {
+    if (axs_wechatgpt_wrap(obj)) return obj;
     if (!obj || [obj isKindOfClass:NSString.class] || [obj isKindOfClass:NSNumber.class]) return nil;
     for (NSString *key in @[@"m_msgWrap", @"msgWrap", @"messageWrap", @"m_messageWrap", @"message", @"m_msg", @"getMessageWrap", @"getMsgWrap"]) {
-        id candidate = DGPTSlot(obj, key);
-        if (DGPTWrap(candidate)) return candidate;
+        id candidate = axs_wechatgpt_slot(obj, key);
+        if (axs_wechatgpt_wrap(candidate)) return candidate;
     }
     for (NSString *key in @[@"viewModel", @"m_viewModel", @"messageModel", @"m_messageModel", @"m_msgViewModel"]) {
-        id model = DGPTSlot(obj, key);
+        id model = axs_wechatgpt_slot(obj, key);
         if (!model || model == obj) continue;
         for (NSString *inner in @[@"m_msgWrap", @"msgWrap", @"messageWrap", @"m_messageWrap", @"message", @"m_msg"]) {
-            id candidate = DGPTSlot(model, inner);
-            if (DGPTWrap(candidate)) return candidate;
+            id candidate = axs_wechatgpt_slot(model, inner);
+            if (axs_wechatgpt_wrap(candidate)) return candidate;
         }
     }
     return nil;
 }
-static id DGPTMMService(Class serviceClass) {
+static id axs_wechatgpt_mmService(Class serviceClass) {
     Class contextClass = objc_getClass("MMContext");
     SEL active = NSSelectorFromString(@"activeUserContext");
     if (!contextClass || !serviceClass) return nil;
     Method cm = class_getClassMethod(contextClass, active);
     if (!cm || method_getNumberOfArguments(cm) != 2) return nil;
     char *rt = method_copyReturnType(cm);
-    BOOL ok = rt && DGPTUnqualify(rt)[0] == '@';
+    BOOL ok = rt && axs_wechatgpt_unqualify(rt)[0] == '@';
     if (rt) free(rt);
     if (!ok) return nil;
     @try {
@@ -108,35 +108,35 @@ static id DGPTMMService(Class serviceClass) {
         if (!m || method_getNumberOfArguments(m) != 3) return nil;
         char *ret = method_copyReturnType(m);
         char *arg = method_copyArgumentType(m, 2);
-        BOOL typesOK = ret && DGPTUnqualify(ret)[0] == '@' && arg && strchr("@#", DGPTUnqualify(arg)[0]) != NULL;
+        BOOL typesOK = ret && axs_wechatgpt_unqualify(ret)[0] == '@' && arg && strchr("@#", axs_wechatgpt_unqualify(arg)[0]) != NULL;
         if (ret) free(ret);
         if (arg) free(arg);
         if (!typesOK) return nil;
         return ((id (*)(id, SEL, id))objc_msgSend)(ctx, get, serviceClass);
     } @catch (__unused NSException *e) { return nil; }
 }
-static UIViewController *DGPTOwner(UIView *cell) {
+static UIViewController *axs_wechatgpt_owner(UIView *cell) {
     UIResponder *cur = cell;
     for (NSUInteger i = 0; cur && i < 70; ++i, cur = cur.nextResponder)
         if ([cur isKindOfClass:UIViewController.class]) return (UIViewController *)cur;
     return nil;
 }
-static NSString *DGPTFromController(UIView *cell) {
-    UIViewController *vc = DGPTOwner(cell);
+static NSString *axs_wechatgpt_fromController(UIView *cell) {
+    UIViewController *vc = axs_wechatgpt_owner(cell);
     for (NSUInteger depth = 0; vc && depth < 6; ++depth, vc = vc.parentViewController) {
         for (NSString *key in @[@"m_nsChatUsr", @"m_nsChatUserName", @"m_nsUsrName", @"m_chatUserName", @"m_nsTalker"]) {
-            NSString *name = DGPTString(vc, key);
+            NSString *name = axs_wechatgpt_string(vc, key);
             if (name.length) return name;
         }
         for (NSString *key in @[@"m_contact", @"m_chatContact", @"m_oChatContact", @"m_currentContact", @"contact"]) {
-            id c = DGPTSlot(vc, key);
-            NSString *name = DGPTString(c, @"m_nsUsrName");
+            id c = axs_wechatgpt_slot(vc, key);
+            NSString *name = axs_wechatgpt_string(c, @"m_nsUsrName");
             if (name.length) return name;
         }
         // These selectors may return a display label instead of a stable
         // conversation identifier; validate it against the selected message.
         for (NSString *key in @[@"getCurrentChatName", @"GetChatName"]) {
-            NSString *name = DGPTString(vc, key);
+            NSString *name = axs_wechatgpt_string(vc, key);
             if (name.length) return name;
         }
     }
@@ -145,16 +145,16 @@ static NSString *DGPTFromController(UIView *cell) {
 // Only stable contact/chat-ID fields are accepted as fallback when no wrap
 // exists. Do not use getCurrentChatName/GetChatName here: those may be a group
 // display title that is missing the @chatroom suffix.
-static NSString *DGPTStableIDFromController(UIView *cell) {
-    UIViewController *vc = DGPTOwner(cell);
+static NSString *axs_wechatgpt_stableIDFromController(UIView *cell) {
+    UIViewController *vc = axs_wechatgpt_owner(cell);
     for (NSUInteger depth = 0; vc && depth < 6; ++depth, vc = vc.parentViewController) {
         for (NSString *key in @[@"m_nsChatUsr", @"m_nsChatUserName", @"m_nsUsrName", @"m_chatUserName", @"m_nsTalker"]) {
-            NSString *name = DGPTString(vc, key);
+            NSString *name = axs_wechatgpt_string(vc, key);
             if (name.length) return name;
         }
         for (NSString *key in @[@"m_contact", @"m_chatContact", @"m_oChatContact", @"m_currentContact", @"contact"]) {
-            id contact = DGPTSlot(vc, key);
-            NSString *name = DGPTString(contact, @"m_nsUsrName");
+            id contact = axs_wechatgpt_slot(vc, key);
+            NSString *name = axs_wechatgpt_string(contact, @"m_nsUsrName");
             if (name.length) return name;
         }
     }
@@ -162,18 +162,18 @@ static NSString *DGPTStableIDFromController(UIView *cell) {
 }
 // The current chat controller is the primary source of the conversation ID.
 // No local-account lookup or stored account identifier is used.
-static NSString *DGPTSession(id wrap, UIView *cell) {
-    NSString *from = DGPTString(wrap, @"m_nsFromUsr");
-    NSString *to = DGPTString(wrap, @"m_nsToUsr");
+static NSString *axs_wechatgpt_session(id wrap, UIView *cell) {
+    NSString *from = axs_wechatgpt_string(wrap, @"m_nsFromUsr");
+    NSString *to = axs_wechatgpt_string(wrap, @"m_nsToUsr");
     if ([from hasSuffix:@"@chatroom"]) return from;
     if ([to hasSuffix:@"@chatroom"]) return to;
-    NSString *onScreen = DGPTFromController(cell);
+    NSString *onScreen = axs_wechatgpt_fromController(cell);
     if (onScreen.length && ((!from.length && !to.length) ||
         [onScreen isEqualToString:from] || [onScreen isEqualToString:to])) return onScreen;
     // A fallback for older WeChat builds without a readable chat controller.
     // These status values are version-specific, so prefer the controller ID.
     if (from.length && to.length) {
-        long long status = DGPTInt(wrap, @"m_uiStatus");
+        long long status = axs_wechatgpt_int(wrap, @"m_uiStatus");
         if (status == 3) return from;
         if (status == 1 || status == 2 || status == 5) return to;
     }
@@ -182,9 +182,9 @@ static NSString *DGPTSession(id wrap, UIView *cell) {
 
 // Only the verified native "last messages" selector is used. No screen
 // scraping, no alternate time-query selector, no plugin history database.
-static BOOL DGPTSetInteger(NSInvocation *inv, NSUInteger index, const char *type, long long value) {
-    type = DGPTUnqualify(type);
-    if (!DGPTIsInteger(type)) return NO;
+static BOOL axs_wechatgpt_setInteger(NSInvocation *inv, NSUInteger index, const char *type, long long value) {
+    type = axs_wechatgpt_unqualify(type);
+    if (!axs_wechatgpt_isInteger(type)) return NO;
     switch (*type) {
         case 'c': { signed char v=(signed char)value; [inv setArgument:&v atIndex:index]; return YES; }
         case 'C': case 'B': { unsigned char v=(unsigned char)value; [inv setArgument:&v atIndex:index]; return YES; }
@@ -199,8 +199,8 @@ static BOOL DGPTSetInteger(NSInvocation *inv, NSUInteger index, const char *type
         default: return NO;
     }
 }
-static BOOL DGPTFitsUnsigned(NSUInteger number, const char *type) {
-    type = DGPTUnqualify(type);
+static BOOL axs_wechatgpt_fitsUnsigned(NSUInteger number, const char *type) {
+    type = axs_wechatgpt_unqualify(type);
     if (!type || !number || number > (NSUInteger)NSIntegerMax) return NO;
     switch (*type) {
         case 'c': return number <= SCHAR_MAX;
@@ -216,8 +216,8 @@ static BOOL DGPTFitsUnsigned(NSUInteger number, const char *type) {
         default: return NO;
     }
 }
-static BOOL DGPTFitsCursor(long long number, const char *type) {
-    type = DGPTUnqualify(type);
+static BOOL axs_wechatgpt_fitsCursor(long long number, const char *type) {
+    type = axs_wechatgpt_unqualify(type);
     if (!type || number < 0) return NO;
     switch (*type) {
         case 'c': return number <= SCHAR_MAX;
@@ -232,11 +232,11 @@ static BOOL DGPTFitsCursor(long long number, const char *type) {
         default: return NO;
     }
 }
-static NSArray *DGPTQueryLast(NSString *session, NSUInteger limit, long long fromID,
+static NSArray *axs_wechatgpt_queryLast(NSString *session, NSUInteger limit, long long fromID,
                               long long fromTime, long long *left, NSString **failure) {
     if (failure) *failure = @"";
     if (left) *left = -1;
-    id manager = DGPTMMService(objc_getClass("CMessageMgr"));
+    id manager = axs_wechatgpt_mmService(objc_getClass("CMessageMgr"));
     if (!manager) { if (failure) *failure = @"无法获取 CMessageMgr"; return nil; }
     if (!session.length) { if (failure) *failure = @"当前会话 ID 为空"; return nil; }
     SEL sel = NSSelectorFromString(@"GetLastMsgByCreateTime:FromID:FromCreateTime:Limit:LeftCount:");
@@ -245,20 +245,20 @@ static NSArray *DGPTQueryLast(NSString *session, NSUInteger limit, long long fro
         if (failure) *failure = @"当前微信版本不支持原生最近消息接口";
         return nil;
     }
-    const char *ret = DGPTUnqualify(sig.methodReturnType);
-    const char *argSession = DGPTUnqualify([sig getArgumentTypeAtIndex:2]);
-    const char *output = DGPTUnqualify([sig getArgumentTypeAtIndex:6]);
+    const char *ret = axs_wechatgpt_unqualify(sig.methodReturnType);
+    const char *argSession = axs_wechatgpt_unqualify([sig getArgumentTypeAtIndex:2]);
+    const char *output = axs_wechatgpt_unqualify([sig getArgumentTypeAtIndex:6]);
     if (!ret || *ret!='@' || !argSession || *argSession!='@' ||
-        !DGPTIsInteger([sig getArgumentTypeAtIndex:3]) ||
-        !DGPTIsInteger([sig getArgumentTypeAtIndex:4]) ||
-        !DGPTIsInteger([sig getArgumentTypeAtIndex:5]) ||
-        !output || *output!='^' || !DGPTIsInteger(output+1)) {
+        !axs_wechatgpt_isInteger([sig getArgumentTypeAtIndex:3]) ||
+        !axs_wechatgpt_isInteger([sig getArgumentTypeAtIndex:4]) ||
+        !axs_wechatgpt_isInteger([sig getArgumentTypeAtIndex:5]) ||
+        !output || *output!='^' || !axs_wechatgpt_isInteger(output+1)) {
         if (failure) *failure = @"原生查询 ABI 参数签名不兼容";
         return nil;
     }
-    if (!DGPTFitsUnsigned(limit, [sig getArgumentTypeAtIndex:5]) ||
-        !DGPTFitsCursor(fromID, [sig getArgumentTypeAtIndex:3]) ||
-        !DGPTFitsCursor(fromTime, [sig getArgumentTypeAtIndex:4])) {
+    if (!axs_wechatgpt_fitsUnsigned(limit, [sig getArgumentTypeAtIndex:5]) ||
+        !axs_wechatgpt_fitsCursor(fromID, [sig getArgumentTypeAtIndex:3]) ||
+        !axs_wechatgpt_fitsCursor(fromTime, [sig getArgumentTypeAtIndex:4])) {
         if (failure) *failure = @"数量或分页游标超过接口整数范围";
         return nil;
     }
@@ -267,9 +267,9 @@ static NSArray *DGPTQueryLast(NSString *session, NSUInteger limit, long long fro
         [inv setTarget:manager]; [inv setSelector:sel];
         id stringArg = session;
         [inv setArgument:&stringArg atIndex:2];
-        if (!DGPTSetInteger(inv, 3, [sig getArgumentTypeAtIndex:3], fromID) ||
-            !DGPTSetInteger(inv, 4, [sig getArgumentTypeAtIndex:4], fromTime) ||
-            !DGPTSetInteger(inv, 5, [sig getArgumentTypeAtIndex:5], (long long)limit)) {
+        if (!axs_wechatgpt_setInteger(inv, 3, [sig getArgumentTypeAtIndex:3], fromID) ||
+            !axs_wechatgpt_setInteger(inv, 4, [sig getArgumentTypeAtIndex:4], fromTime) ||
+            !axs_wechatgpt_setInteger(inv, 5, [sig getArgumentTypeAtIndex:5], (long long)limit)) {
             if (failure) *failure = @"无法设置原生查询参数";
             return nil;
         }
@@ -285,7 +285,7 @@ static NSArray *DGPTQueryLast(NSString *session, NSUInteger limit, long long fro
         }
         // Keep the native output-pointer width: an int32 write into our
         // 8-byte buffer must not leave stale upper bytes from -1.
-        const char *pointee = DGPTUnqualify(output+1);
+        const char *pointee = axs_wechatgpt_unqualify(output+1);
         long long decoded = remaining;
         if (*pointee == 'i') decoded = (int)(uint32_t)remaining;
         else if (*pointee == 'I') decoded = (unsigned int)(uint32_t)remaining;
@@ -301,12 +301,12 @@ static NSArray *DGPTQueryLast(NSString *session, NSUInteger limit, long long fro
     }
 }
 
-static NSString *DGPTNormalizedText(id wrap, BOOL *truncated) {
+static NSString *axs_wechatgpt_normalizedText(id wrap, BOOL *truncated) {
     if (truncated) *truncated = NO;
-    if (DGPTInt(wrap, @"m_uiMessageType") != 1) return @"";
-    NSString *content = DGPTString(wrap, @"m_nsContent");
-    NSString *from = DGPTString(wrap, @"m_nsFromUsr");
-    NSString *to = DGPTString(wrap, @"m_nsToUsr");
+    if (axs_wechatgpt_int(wrap, @"m_uiMessageType") != 1) return @"";
+    NSString *content = axs_wechatgpt_string(wrap, @"m_nsContent");
+    NSString *from = axs_wechatgpt_string(wrap, @"m_nsFromUsr");
+    NSString *to = axs_wechatgpt_string(wrap, @"m_nsToUsr");
     if ([from hasSuffix:@"@chatroom"] || [to hasSuffix:@"@chatroom"]) {
         NSRange range = [content rangeOfString:@":\n"];
         if (range.location != NSNotFound && range.location < 160)
@@ -321,7 +321,7 @@ static NSString *DGPTNormalizedText(id wrap, BOOL *truncated) {
 // WeChat stores several rich cards as message type 49. Classify the appmsg
 // subtype from the already-retrieved CMessageWrap content; do not download
 // media, consult the local database, or claim to recognize image pixels.
-static NSString *DGPTAppXMLValue(NSString *xml, NSString *tag) {
+static NSString *axs_wechatgpt_appXMLValue(NSString *xml, NSString *tag) {
     if (![xml isKindOfClass:NSString.class] || !xml.length || xml.length > 400000) return @"";
     NSRange app = [xml rangeOfString:@"<appmsg" options:NSCaseInsensitiveSearch];
     if (app.location == NSNotFound) return @"";
@@ -343,10 +343,10 @@ static NSString *DGPTAppXMLValue(NSString *xml, NSString *tag) {
         value = [value substringWithRange:NSMakeRange(9,value.length-12)];
     return value.length <= 180 ? value : [value substringToIndex:180];
 }
-static NSString *DGPTMessageCategory(NSInteger type, NSString *xml, NSInteger *subtype) {
+static NSString *axs_wechatgpt_messageCategory(NSInteger type, NSString *xml, NSInteger *subtype) {
     NSInteger appType=0;
     if (type == 49) {
-        NSString *number = DGPTAppXMLValue(xml,@"type");
+        NSString *number = axs_wechatgpt_appXMLValue(xml,@"type");
         if (number.length && number.length < 12) {
             NSScanner *scanner = [NSScanner scannerWithString:number];
             NSInteger candidate=0;
@@ -387,7 +387,7 @@ static NSString *DGPTMessageCategory(NSInteger type, NSString *xml, NSInteger *s
         default: return @"other";
     }
 }
-static NSString *DGPTCategoryLabel(NSString *category) {
+static NSString *axs_wechatgpt_categoryLabel(NSString *category) {
     static NSDictionary<NSString *,NSString *> *names;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
@@ -399,14 +399,14 @@ static NSString *DGPTCategoryLabel(NSString *category) {
     });
     return names[category] ?: @"其他消息";
 }
-static NSDictionary *DGPTNormalizeMessage(id row, NSString *session) {
-    id wrap = DGPTWrapFrom(row);
+static NSDictionary *axs_wechatgpt_normalizeMessage(id row, NSString *session) {
+    id wrap = axs_wechatgpt_wrapFrom(row);
     if (!wrap || !session.length) return nil;
-    NSString *from = DGPTString(wrap, @"m_nsFromUsr");
-    NSString *to = DGPTString(wrap, @"m_nsToUsr");
+    NSString *from = axs_wechatgpt_string(wrap, @"m_nsFromUsr");
+    NSString *to = axs_wechatgpt_string(wrap, @"m_nsToUsr");
     if (![from isEqualToString:session] && ![to isEqualToString:session]) return nil;
     BOOL group = [session hasSuffix:@"@chatroom"];
-    NSString *real = DGPTString(wrap, @"m_nsRealChatUsr");
+    NSString *real = axs_wechatgpt_string(wrap, @"m_nsRealChatUsr");
     // Sender/recipient are relative to the current conversation, not any
     // account identifier. Ambiguous messages are never assigned a direction.
     NSString *direction = @"unknown";
@@ -416,27 +416,27 @@ static NSDictionary *DGPTNormalizeMessage(id row, NSString *session) {
         direction = @"mine";
     // In group messages the real sender is retained for descriptive labels;
     // do not classify a group member as the account owner using that field.
-    long long time = DGPTInt(wrap, @"m_uiCreateTime");
+    long long time = axs_wechatgpt_int(wrap, @"m_uiCreateTime");
     if (time > 100000000000LL) time /= 1000;
-    long long local = DGPTInt(wrap, @"m_uiMesLocalID");
-    long long server = DGPTInt(wrap, @"m_n64MesSvrID");
-    NSInteger type = (NSInteger)DGPTInt(wrap, @"m_uiMessageType");
+    long long local = axs_wechatgpt_int(wrap, @"m_uiMesLocalID");
+    long long server = axs_wechatgpt_int(wrap, @"m_n64MesSvrID");
+    NSInteger type = (NSInteger)axs_wechatgpt_int(wrap, @"m_uiMessageType");
     BOOL cut = NO;
-    NSString *text = DGPTNormalizedText(wrap, &cut);
-    NSString *raw = type == 49 ? DGPTString(wrap, @"m_nsContent") : @"";
+    NSString *text = axs_wechatgpt_normalizedText(wrap, &cut);
+    NSString *raw = type == 49 ? axs_wechatgpt_string(wrap, @"m_nsContent") : @"";
     if (raw.length > 400000) raw = [raw substringToIndex:400000];
     NSInteger subtype=0;
-    NSString *category = DGPTMessageCategory(type, raw, &subtype);
+    NSString *category = axs_wechatgpt_messageCategory(type, raw, &subtype);
     NSString *description = @"";
     if ([category isEqualToString:@"text"]) {
         description = text;
     } else {
         NSString *title = (type == 49 && ([category isEqualToString:@"miniProgram"] ||
             [category isEqualToString:@"link"] || [category isEqualToString:@"file"])) ?
-            DGPTAppXMLValue(raw, @"title") : @"";
+            axs_wechatgpt_appXMLValue(raw, @"title") : @"";
         description = title.length ? [NSString stringWithFormat:@"[%@：%@]",
-            DGPTCategoryLabel(category), title] :
-            [NSString stringWithFormat:@"[%@，仅识别消息类型，未读取媒体内容]",DGPTCategoryLabel(category)];
+            axs_wechatgpt_categoryLabel(category), title] :
+            [NSString stringWithFormat:@"[%@，仅识别消息类型，未读取媒体内容]",axs_wechatgpt_categoryLabel(category)];
     }
     NSString *key = server > 0 ? [NSString stringWithFormat:@"s%lld",server] :
         (local > 0 ? [NSString stringWithFormat:@"l%lld",local] :
@@ -445,10 +445,10 @@ static NSDictionary *DGPTNormalizeMessage(id row, NSString *session) {
               @"direction":direction, @"sender":(group ? (real.length ? real : from) : from),
               @"timestamp":@(time), @"localID":@(local), @"serverID":@(server),
               @"messageType":@(type), @"appMessageType":@(subtype),
-              @"category":category, @"categoryLabel":DGPTCategoryLabel(category),
+              @"category":category, @"categoryLabel":axs_wechatgpt_categoryLabel(category),
               @"analysisText":description ?: @"", @"truncated":@(cut) };
 }
-static NSArray<NSDictionary *> *DGPTChronological(NSArray<NSDictionary *> *rows) {
+static NSArray<NSDictionary *> *axs_wechatgpt_chronological(NSArray<NSDictionary *> *rows) {
     return [rows sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
         long long x=[a[@"timestamp"] longLongValue], y=[b[@"timestamp"] longLongValue];
         if (x != y) return x<y ? NSOrderedAscending:NSOrderedDescending;
@@ -458,19 +458,19 @@ static NSArray<NSDictionary *> *DGPTChronological(NSArray<NSDictionary *> *rows)
     }];
 }
 
-@implementation DGPTWeChatBridge
+@implementation AxsWeChatGPTWeChatBridge
 + (BOOL)isSingleChatCell:(UIView *)cell {
     if (![cell isKindOfClass:UIView.class] || !NSThread.isMainThread) return NO;
     // Use the same private message and chat-controller fields already read
     // by the existing native-history bridge. No group-specific hooks, no wxid.
-    id wrap = DGPTWrapFrom(cell);
-    NSString *from = DGPTString(wrap, @"m_nsFromUsr");
-    NSString *to = DGPTString(wrap, @"m_nsToUsr");
+    id wrap = axs_wechatgpt_wrapFrom(cell);
+    NSString *from = axs_wechatgpt_string(wrap, @"m_nsFromUsr");
+    NSString *to = axs_wechatgpt_string(wrap, @"m_nsToUsr");
     if ([from hasSuffix:@"@chatroom"] || [to hasSuffix:@"@chatroom"]) return NO;
-    NSString *stableID = DGPTStableIDFromController(cell);
+    NSString *stableID = axs_wechatgpt_stableIDFromController(cell);
     if ([stableID hasSuffix:@"@chatroom"]) return NO;
     if (wrap) {
-        NSString *session = DGPTSession(wrap, cell);
+        NSString *session = axs_wechatgpt_session(wrap, cell);
         return session.length > 0 && ![session hasSuffix:@"@chatroom"];
     }
     // With no message wrap, only a stable user/contact ID qualifies.
@@ -478,23 +478,23 @@ static NSArray<NSDictionary *> *DGPTChronological(NSArray<NSDictionary *> *rows)
     return stableID.length > 0;
 }
 + (NSString *)messagePlaceholderForWrap:(id)wrap {
-    if (!DGPTWrap(wrap)) return @"";
-    NSInteger type=(NSInteger)DGPTInt(wrap,@"m_uiMessageType");
-    if (type==1) return DGPTNormalizedText(wrap,NULL);
-    NSString *raw=DGPTString(wrap,@"m_nsContent");
+    if (!axs_wechatgpt_wrap(wrap)) return @"";
+    NSInteger type=(NSInteger)axs_wechatgpt_int(wrap,@"m_uiMessageType");
+    if (type==1) return axs_wechatgpt_normalizedText(wrap,NULL);
+    NSString *raw=axs_wechatgpt_string(wrap,@"m_nsContent");
     NSInteger appType=0;
-    NSString *category=DGPTMessageCategory(type,raw,&appType);
+    NSString *category=axs_wechatgpt_messageCategory(type,raw,&appType);
     (void)appType;
-    return [NSString stringWithFormat:@"[%@消息，未读取媒体内容]",DGPTCategoryLabel(category)];
+    return [NSString stringWithFormat:@"[%@消息，未读取媒体内容]",axs_wechatgpt_categoryLabel(category)];
 }
 
 + (NSDictionary<NSString *,id> *)sessionContextForCell:(UIView *)cell selectedWrap:(id)selectedWrap {
     if (!NSThread.isMainThread || ![cell isKindOfClass:UIView.class])
         return @{ @"error":@"请从微信聊天文字气泡打开" };
-    id anchor = DGPTWrapFrom(selectedWrap) ?: DGPTWrapFrom(cell);
-    NSString *session = DGPTSession(anchor, cell);
+    id anchor = axs_wechatgpt_wrapFrom(selectedWrap) ?: axs_wechatgpt_wrapFrom(cell);
+    NSString *session = axs_wechatgpt_session(anchor, cell);
     if (!session.length) {
-        NSString *controllerGroup = DGPTFromController(cell);
+        NSString *controllerGroup = axs_wechatgpt_fromController(cell);
         if ([controllerGroup hasSuffix:@"@chatroom"]) session = controllerGroup;
     }
     if (!session.length) return @{ @"error":@"未能识别当前会话 ID，请从聊天文字气泡打开" };
@@ -508,13 +508,13 @@ static NSArray<NSDictionary *> *DGPTChronological(NSArray<NSDictionary *> *rows)
     CFTimeInterval start = CACurrentMediaTime();
     NSString *failure = @"";
     long long left = -1;
-    NSArray *raw = DGPTQueryLast(session, limit, fromID, fromTime, &left, &failure);
+    NSArray *raw = axs_wechatgpt_queryLast(session, limit, fromID, fromTime, &left, &failure);
     NSTimeInterval seconds = CACurrentMediaTime()-start;
     if (!raw) return @{ @"messages":@[], @"error":failure.length ? failure : @"查询失败", @"seconds":@(seconds) };
     NSMutableDictionary<NSString *,NSDictionary *> *unique = [NSMutableDictionary dictionary];
     long long earliestTime = LLONG_MAX, earliestID = 0;
     for (id row in raw) {
-        NSDictionary *record = DGPTNormalizeMessage(row, session);
+        NSDictionary *record = axs_wechatgpt_normalizeMessage(row, session);
         if (!record) continue;
         NSString *key = record[@"key"];
         if (key.length && !unique[key]) unique[key] = record;
@@ -525,7 +525,7 @@ static NSArray<NSDictionary *> *DGPTChronological(NSArray<NSDictionary *> *rows)
             }
         }
     }
-    return @{ @"messages":DGPTChronological(unique.allValues), @"rawCount":@(raw.count),
+    return @{ @"messages":axs_wechatgpt_chronological(unique.allValues), @"rawCount":@(raw.count),
               @"leftCount":@(left), @"fromID":@(earliestID),
               @"fromTime":@(earliestTime == LLONG_MAX ? 0 : earliestTime),
               @"seconds":@(seconds), @"error":@"" };

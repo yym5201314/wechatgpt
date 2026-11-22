@@ -1,9 +1,10 @@
-#import "DGPTMessageReply.h"
-#import "DGPTClient.h"
-#import "DGPTConfig.h"
-#import "DGPTNativeMenu.h"
-#import "DGPTWeChatBridge.h"
-#import "DGPTAnalysisVC.h"
+#import "AxsWeChatGPTMessageReply.h"
+#import "AxsWeChatGPTClient.h"
+#import "AxsWeChatGPTConfig.h"
+#import "AxsWeChatGPTMenuInjector.h"
+#import "AxsWeChatGPTWeChatBridge.h"
+// The analysis page lives in Controllers/; it is looked up by class name so this
+// source file only depends on the router-free, UI-free part of the plugin.
 #import <objc/runtime.h>
 #import <objc/message.h>
 #include <stdlib.h>
@@ -11,7 +12,7 @@
 
 
 // Runtime type checks avoid arbitrary KVC/private message-method invocations.
-static id DGPTReadValue(id object, NSString *name) {
+static id axs_wechatgpt_readValue(id object, NSString *name) {
     if (!object || !name.length) return nil;
     Ivar ivar = class_getInstanceVariable([object class], name.UTF8String);
     if (!ivar) ivar = class_getInstanceVariable([object class],
@@ -31,7 +32,7 @@ static id DGPTReadValue(id object, NSString *name) {
     @catch (__unused NSException *e) { return nil; }
 }
 
-static long long DGPTReadNumber(id object, NSString *name) {
+static long long axs_wechatgpt_readNumber(id object, NSString *name) {
     if (!object || !name.length) return 0;
     SEL selector = NSSelectorFromString(name);
     Method method = class_getInstanceMethod([object class], selector);
@@ -68,23 +69,23 @@ static long long DGPTReadNumber(id object, NSString *name) {
     return 0;
 }
 
-static NSString *DGPTReadString(id object, NSString *name) {
-    id value = DGPTReadValue(object, name);
+static NSString *axs_wechatgpt_readString(id object, NSString *name) {
+    id value = axs_wechatgpt_readValue(object, name);
     return [value isKindOfClass:NSString.class] ? value : nil;
 }
 
-static id DGPTExtractWrap(id cell) {
+static id axs_wechatgpt_extractWrap(id cell) {
     if (!cell) return nil;
     Class wrapClass = objc_getClass("CMessageWrap");
     if (!wrapClass) return nil;
     for (NSString *name in @[@"m_msgWrap", @"msgWrap", @"messageWrap", @"m_messageWrap", @"message", @"getMessageWrap", @"getMsgWrap"]) {
-        id wrap = DGPTReadValue(cell, name);
+        id wrap = axs_wechatgpt_readValue(cell, name);
         if ([wrap isKindOfClass:wrapClass]) return wrap;
     }
     for (NSString *name in @[@"viewModel", @"m_viewModel", @"messageModel", @"m_messageModel", @"m_msgViewModel"]) {
-        id model = DGPTReadValue(cell, name);
+        id model = axs_wechatgpt_readValue(cell, name);
         for (NSString *key in @[@"m_msgWrap", @"msgWrap", @"messageWrap", @"message"]) {
-            id wrap = DGPTReadValue(model, key);
+            id wrap = axs_wechatgpt_readValue(model, key);
             if ([wrap isKindOfClass:wrapClass]) return wrap;
         }
     }
@@ -101,7 +102,7 @@ static id DGPTExtractWrap(id cell) {
                     for (NSString *key in @[@"m_msgWrap", @"msgWrap", @"messageWrap",
                                            @"m_messageWrap", @"message", @"m_msg",
                                            @"getMessageWrap", @"getMsgWrap"]) {
-                        id result=DGPTReadValue(child,key);
+                        id result=axs_wechatgpt_readValue(child,key);
                         if ([result isKindOfClass:wrapClass]) return result;
                     }
                     if (child.subviews.count && depth<3) [next addObject:child];
@@ -114,13 +115,13 @@ static id DGPTExtractWrap(id cell) {
     return nil;
 }
 
-static NSString *DGPTMessageText(id wrap) {
-    if (!wrap || DGPTReadNumber(wrap, @"m_uiMessageType") != 1) return nil;
-    NSString *content = DGPTReadString(wrap, @"m_nsContent");
+static NSString *axs_wechatgpt_messageText(id wrap) {
+    if (!wrap || axs_wechatgpt_readNumber(wrap, @"m_uiMessageType") != 1) return nil;
+    NSString *content = axs_wechatgpt_readString(wrap, @"m_nsContent");
     if (!content.length || content.length > 12000) return nil;
     NSRange range = [content rangeOfString:@":\n"];
-    NSString *from = DGPTReadString(wrap, @"m_nsFromUsr");
-    NSString *to = DGPTReadString(wrap, @"m_nsToUsr");
+    NSString *from = axs_wechatgpt_readString(wrap, @"m_nsFromUsr");
+    NSString *to = axs_wechatgpt_readString(wrap, @"m_nsToUsr");
     if (([from hasSuffix:@"@chatroom"] || [to hasSuffix:@"@chatroom"]) &&
         range.location != NSNotFound && range.location > 0 && range.location < 160)
         content = [content substringFromIndex:NSMaxRange(range)];
@@ -131,7 +132,7 @@ static NSString *DGPTMessageText(id wrap) {
 // Only accept visible text as a fallback for a view whose runtime class
 // clearly identifies it as a text-message cell; never guess from a random
 // UILabel elsewhere in WeChat. In this case the send target stays unknown.
-static BOOL DGPTIsTextMessageCellView(UIView *view) {
+static BOOL axs_wechatgpt_isTextMessageCellView(UIView *view) {
     for (Class cls = [view class]; cls && cls != UIView.class; cls = class_getSuperclass(cls)) {
         NSString *name = NSStringFromClass(cls);
         if ([name containsString:@"TextMessageCellView"] ||
@@ -141,7 +142,7 @@ static BOOL DGPTIsTextMessageCellView(UIView *view) {
     return NO;
 }
 
-static void DGPTFindVisibleText(UIView *view, NSString **best) {
+static void axs_wechatgpt_findVisibleText(UIView *view, NSString **best) {
     if (!view || view.hidden || view.alpha < 0.1) return;
     NSString *candidate = nil;
     if ([view isKindOfClass:UILabel.class]) candidate = ((UILabel *)view).text;
@@ -149,28 +150,28 @@ static void DGPTFindVisibleText(UIView *view, NSString **best) {
         candidate = ((UITextView *)view).text;
     candidate = [candidate stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (candidate.length && candidate.length <= 12000 && candidate.length > (*best).length) *best = candidate;
-    for (UIView *child in view.subviews) DGPTFindVisibleText(child, best);
+    for (UIView *child in view.subviews) axs_wechatgpt_findVisibleText(child, best);
 }
 
-static NSString *DGPTTextForCell(id cell) {
+static NSString *axs_wechatgpt_textForCell(id cell) {
     if (![cell isKindOfClass:UIView.class]) return nil;
-    NSString *text = DGPTMessageText(DGPTExtractWrap(cell));
+    NSString *text = axs_wechatgpt_messageText(axs_wechatgpt_extractWrap(cell));
     if (text.length) return text;
-    BOOL hasTextView = DGPTIsTextMessageCellView((UIView *)cell);
+    BOOL hasTextView = axs_wechatgpt_isTextMessageCellView((UIView *)cell);
     if (!hasTextView) {
         for (UIView *child in ((UIView *)cell).subviews) {
-            if (DGPTIsTextMessageCellView(child)) { hasTextView=YES; break; }
+            if (axs_wechatgpt_isTextMessageCellView(child)) { hasTextView=YES; break; }
         }
     }
     if (!hasTextView) return nil;
     NSString *visibleText = nil;
-    DGPTFindVisibleText((UIView *)cell, &visibleText);
+    axs_wechatgpt_findVisibleText((UIView *)cell, &visibleText);
     return visibleText;
 }
 
 // UI helpers are deliberately UIKit-only. The manual AI reply must never call
 // CMessageMgr, sendText: or any private WeChat send API.
-static UIViewController *DGPTTopInWindow(UIWindow *window) {
+static UIViewController *axs_wechatgpt_topInWindow(UIWindow *window) {
     UIViewController *controller = window.rootViewController;
     for (NSUInteger i = 0; controller && i < 24; i++) {
         if (controller.presentedViewController) {
@@ -186,8 +187,8 @@ static UIViewController *DGPTTopInWindow(UIWindow *window) {
     return controller;
 }
 
-static void DGPTShowNotice(UIWindow *window, NSString *title, NSString *description) {
-    UIViewController *host = DGPTTopInWindow(window);
+static void axs_wechatgpt_showNotice(UIWindow *window, NSString *title, NSString *description) {
+    UIViewController *host = axs_wechatgpt_topInWindow(window);
     if (!host || host.isBeingDismissed || host.isBeingPresented) {
         NSLog(@"[StandaloneGPT] %@: %@", title, description);
         return;
@@ -197,11 +198,11 @@ static void DGPTShowNotice(UIWindow *window, NSString *title, NSString *descript
     [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:nil]];
     [host presentViewController:alert animated:YES completion:nil];
 }
-static void DGPTShowAnalysisError(UIWindow *window, NSString *description) {
-    DGPTShowNotice(window, @"AI 分析无法打开", description);
+static void axs_wechatgpt_showAnalysisError(UIWindow *window, NSString *description) {
+    axs_wechatgpt_showNotice(window, @"AI 分析无法打开", description);
 }
 
-static BOOL DGPTViewIsVisible(UIView *view, UIWindow *window) {
+static BOOL axs_wechatgpt_viewIsVisible(UIView *view, UIWindow *window) {
     if (!view || !window || view.window != window) return NO;
     for (UIView *v = view; v; v = v.superview) {
         if (v.hidden || v.alpha < 0.05) return NO;
@@ -212,14 +213,14 @@ static BOOL DGPTViewIsVisible(UIView *view, UIWindow *window) {
 
 // Find the bottom, visible, editable text input in the current chat screen.
 // Refuse to guess an editor in a search/alert view or another window.
-static void DGPTCollectTextEditors(UIView *view, UIWindow *window,
+static void axs_wechatgpt_collectTextEditors(UIView *view, UIWindow *window,
                                    NSMutableArray<UITextView *> *editors, NSUInteger depth) {
     if (!view || depth > 45 || view.hidden || view.alpha < 0.05) return;
     if ([view isKindOfClass:UITextView.class]) {
         UITextView *editor = (UITextView *)view;
         if (editor.editable && editor.userInteractionEnabled && editor.bounds.size.width >= 90 &&
             editor.bounds.size.height >= 20 && editor.bounds.size.height <= 260 &&
-            DGPTViewIsVisible(editor, window)) {
+            axs_wechatgpt_viewIsVisible(editor, window)) {
             BOOL searchField = NO;
             for (UIView *v = editor; v && v != window; v = v.superview) {
                 NSString *name = NSStringFromClass(v.class).lowercaseString;
@@ -238,14 +239,14 @@ static void DGPTCollectTextEditors(UIView *view, UIWindow *window,
         }
     }
     for (UIView *subview in view.subviews) {
-        DGPTCollectTextEditors(subview, window, editors, depth + 1);
+        axs_wechatgpt_collectTextEditors(subview, window, editors, depth + 1);
     }
 }
 
-static UITextView *DGPTChatInputForWindow(UIWindow *window) {
+static UITextView *axs_wechatgpt_chatInputForWindow(UIWindow *window) {
     if (!window || window.hidden || !window.rootViewController) return nil;
     NSMutableArray<UITextView *> *editors = [NSMutableArray array];
-    DGPTCollectTextEditors(window.rootViewController.view, window, editors, 0);
+    axs_wechatgpt_collectTextEditors(window.rootViewController.view, window, editors, 0);
     UITextView *best = nil;
     CGFloat bestScore = -CGFLOAT_MAX;
     for (UITextView *editor in editors) {
@@ -266,8 +267,8 @@ static UITextView *DGPTChatInputForWindow(UIWindow *window) {
 
 // Replace the current chat draft with AI content. No WeChat send API is called.
 // Only write after AI succeeds. Do not compare conversation/session identifiers.
-static BOOL DGPTFillChatInput(UITextView *editor, UIWindow *window, NSString *newText) {
-    if (!editor || !newText.length || !DGPTViewIsVisible(editor, window) ||
+static BOOL axs_wechatgpt_fillChatInput(UITextView *editor, UIWindow *window, NSString *newText) {
+    if (!editor || !newText.length || !axs_wechatgpt_viewIsVisible(editor, window) ||
         !editor.editable || !editor.userInteractionEnabled) return NO;
     // Requirement: clear any existing draft, then fill with ONLY the AI reply.
     // Do this on the main thread; publish only the final edit to the delegate.
@@ -282,7 +283,7 @@ static BOOL DGPTFillChatInput(UITextView *editor, UIWindow *window, NSString *ne
     return YES;
 }
 
-@interface DGPTMessageReply ()
+@interface AxsWeChatGPTMessageReply ()
 @property (nonatomic, copy) NSString *capturedText;
 @property (nonatomic, strong) id capturedWrap;
 @property (nonatomic, weak) UIWindow *capturedWindow;
@@ -296,11 +297,11 @@ static BOOL DGPTFillChatInput(UITextView *editor, UIWindow *window, NSString *ne
 @property (nonatomic, copy) NSString *lastMenuStatus;
 @end
 
-@implementation DGPTMessageReply
+@implementation AxsWeChatGPTMessageReply
 + (instancetype)shared {
-    static DGPTMessageReply *instance;
+    static AxsWeChatGPTMessageReply *instance;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ instance = [DGPTMessageReply new]; });
+    dispatch_once(&once, ^{ instance = [AxsWeChatGPTMessageReply new]; });
     return instance;
 }
 - (NSString *)menuDiagnosticSummary {
@@ -309,19 +310,19 @@ static BOOL DGPTFillChatInput(UITextView *editor, UIWindow *window, NSString *ne
          @"正在生成：%@\n历史读取：%@\n最后读取：%lu 条（双方）\n最后状态：%@\n\n%@",
         (unsigned long)self.capturedCount, (unsigned long)self.insertedCount,
         self.generatingReply ? @"是" : @"否",
-        [[DGPTConfig shared] boolForKey:DGPTReadChatHistoryEnabled] ? @"开启" : @"关闭",
+        [[AxsWeChatGPTConfig shared] boolForKey:AxsWeChatGPTReadChatHistoryEnabled] ? @"开启" : @"关闭",
         (unsigned long)self.lastContextCount,
         self.lastMenuStatus ?: @"等待点击 AI 回复",
-        [DGPTNativeMenu diagnosticSummary]];
+        [AxsWeChatGPTNativeMenu diagnosticSummary]];
 }
 
 - (void)captureNativeMenuCell:(id)cell {
-    if (![[DGPTConfig shared] boolForKey:DGPTManualMenuEnabled]) return;
+    if (![[AxsWeChatGPTConfig shared] boolForKey:AxsWeChatGPTManualMenuEnabled]) return;
     if (![cell isKindOfClass:UIView.class]) return;
-    id messageWrap = DGPTExtractWrap(cell);
-    NSString *text = [DGPTTextForCell(cell) copy];
+    id messageWrap = axs_wechatgpt_extractWrap(cell);
+    NSString *text = [axs_wechatgpt_textForCell(cell) copy];
     if (!text.length && messageWrap)
-        text = [[DGPTWeChatBridge messagePlaceholderForWrap:messageWrap] copy];
+        text = [[AxsWeChatGPTWeChatBridge messagePlaceholderForWrap:messageWrap] copy];
     if (!text.length) {
         self.lastMenuStatus = @"无法取得当前气泡消息对象";
         return;
@@ -336,7 +337,7 @@ static BOOL DGPTFillChatInput(UITextView *editor, UIWindow *window, NSString *ne
 }
 
 - (BOOL)hasFreshNativeMenuMessage {
-    if (![[DGPTConfig shared] boolForKey:DGPTManualMenuEnabled]) return NO;
+    if (![[AxsWeChatGPTConfig shared] boolForKey:AxsWeChatGPTManualMenuEnabled]) return NO;
     if (!self.capturedText.length || !self.capturedWindow) return NO;
     if (NSDate.date.timeIntervalSince1970 - self.capturedAt > 45.0) return NO;
     return YES;
@@ -360,12 +361,19 @@ static BOOL DGPTFillChatInput(UITextView *editor, UIWindow *window, NSString *ne
     self.capturedText = nil;
     self.capturedAt = 0;
     if (!window || !cell) return;
-    NSDictionary *context = [DGPTWeChatBridge sessionContextForCell:cell selectedWrap:wrap];
+    NSDictionary *context = [AxsWeChatGPTWeChatBridge sessionContextForCell:cell selectedWrap:wrap];
     NSString *failure = context[@"error"];
-    if (failure.length) { DGPTShowAnalysisError(window, failure); return; }
+    if (failure.length) { axs_wechatgpt_showAnalysisError(window, failure); return; }
     // Dismiss WeChat's native long-press menu before modal presentation.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.28 * NSEC_PER_SEC)),
-        dispatch_get_main_queue(), ^{ [DGPTAnalysisVC presentWithSessionContext:context window:window]; });
+        dispatch_get_main_queue(), ^{
+        Class analysisClass = NSClassFromString(@"AxsWeChatGPTAnalysisViewController");
+        SEL present = NSSelectorFromString(@"presentWithSessionContext:window:");
+        if (analysisClass && [analysisClass respondsToSelector:present]) {
+            ((void (*)(id, SEL, NSDictionary *, UIWindow *))objc_msgSend)(analysisClass, present,
+                context, window);
+        }
+    });
 }
 
 - (void)activateCapturedNativeReply {
@@ -383,21 +391,21 @@ static BOOL DGPTFillChatInput(UITextView *editor, UIWindow *window, NSString *ne
     self.capturedAt = 0;
     if (!window || !cell || !selectedText.length) return;
     NSUInteger serial = ++self.requestSerial;
-    DGPTConfig *settings = [DGPTConfig shared];
-    BOOL includeHistory = [settings boolForKey:DGPTReadChatHistoryEnabled];
+    AxsWeChatGPTConfig *settings = [AxsWeChatGPTConfig shared];
+    BOOL includeHistory = [settings boolForKey:AxsWeChatGPTReadChatHistoryEnabled];
     NSUInteger wanted = (NSUInteger)[settings historyMessageCount];
 
     // Allow the native menu to close before locating WeChat's input field.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (serial != self.requestSerial) return;
-        UITextView *input = DGPTChatInputForWindow(window);
+        UITextView *input = axs_wechatgpt_chatInputForWindow(window);
         if (!input) { self.lastMenuStatus = @"没找到微信聊天输入框"; return; }
         NSArray<NSDictionary *> *history = @[];
         BOOL group = NO;
         self.lastContextCount = 0;
         if (includeHistory) {
-            NSDictionary *snapshot = [DGPTWeChatBridge recentOpenChatHistoryForCell:cell
+            NSDictionary *snapshot = [AxsWeChatGPTWeChatBridge recentOpenChatHistoryForCell:cell
                 selectedWrap:tappedWrap limit:wanted];
             history = [snapshot[@"messages"] isKindOfClass:NSArray.class] ? snapshot[@"messages"] : @[];
             group = [snapshot[@"isGroup"] boolValue];
@@ -448,7 +456,7 @@ static BOOL DGPTFillChatInput(UITextView *editor, UIWindow *window, NSString *ne
             @"未启用历史读取，等待 AI";
         __weak UITextView *weakInput = input;
         __weak UIWindow *weakWindow = window;
-        [[DGPTClient shared] askWithMessages:messages completion:^(NSString *answer, NSError *error) {
+        [[AxsWeChatGPTClient shared] askWithMessages:messages completion:^(NSString *answer, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (serial != self.requestSerial) return;
                 self.generatingReply = NO;
@@ -459,8 +467,8 @@ static BOOL DGPTFillChatInput(UITextView *editor, UIWindow *window, NSString *ne
                 }
                 NSString *trimmed = [answer stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
                 if (!trimmed.length) { self.lastMenuStatus = @"AI 返回空内容"; return; }
-                NSString *draft = [[[DGPTConfig shared] stringForKey:DGPTPrefix] stringByAppendingString:trimmed];
-                BOOL filled = DGPTFillChatInput(weakInput, weakWindow, draft);
+                NSString *draft = [[[AxsWeChatGPTConfig shared] stringForKey:AxsWeChatGPTPrefix] stringByAppendingString:trimmed];
+                BOOL filled = axs_wechatgpt_fillChatInput(weakInput, weakWindow, draft);
                 self.lastMenuStatus = filled ? @"回复已填入（未发送）" : @"输入框已失效，未写入";
             });
         }];

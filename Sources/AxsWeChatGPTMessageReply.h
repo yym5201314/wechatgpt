@@ -1,6 +1,6 @@
 #import <UIKit/UIKit.h>
 // Called only by version-checked native WeChat menu integration.
-@interface DGPTMessageReply : NSObject
+@interface AxsWeChatGPTMessageReply : NSObject
 + (instancetype)shared;
 - (void)captureNativeMenuCell:(id)cell;
 - (BOOL)hasFreshNativeMenuMessage;

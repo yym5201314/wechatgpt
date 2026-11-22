@@ -1,35 +1,72 @@
-# zhushou v0.8.3（聊天助手）
+# WeChatGPT（聊天助手）5.2.0
 
-在 v0.8.2 之上修复消息气泡菜单中图标和文字同行的问题。**优先使用微信原生图标菜单项，让图标在上、文字在下**。
+微信内手动使用 AI 的插件：在单聊文字气泡的长按菜单里追加「AI回复」「AI分析」，设置面板在微信内部打开，不注册到系统设置。
 
-## 菜单变更
+## 功能
 
-- 点击单聊文字气泡，菜单仍有「AI回复」「AI分析」，功能与 v0.8.2 相同。
-- 菜单标题只使用 `AI回复`、`AI分析`，不会再把 emoji 和标题写成 `💬AI回复` 这种同行字符串。
-- 优先复用当前微信菜单项目里实际存在的 SVG 图标名，经过方法签名检查后才调用原生带图标的构造方法。
-- 如微信版本不提供兼容的图标菜单 API，则使用两行字符标题作为兜底（`💬\nAI回复` / `🔍\nAI分析`），不能保证所有私有菜单都支持两行。
-- **群聊继续不加载 AI 气泡菜单**，也不改变微信原生群聊菜单。
+- **AI 回复**：读取当前单聊最近 N 条双方消息，把生成的回复填入输入框，不自动发送。
+- **AI 分析**：按日期或全部聊天统计双方消息、文字、图片、视频、红包、转账、小程序等类型。
+- 只作用于私聊文字气泡；群聊、图片、语音、表情气泡不追加菜单。
+- 服务商走 OpenAI 兼容接口，KEY 存在当前 App 的钥匙串，不写入 plist。
 
-## 保留功能
+## 面板入口
 
-- 手动 AI 回复：可选读取当前单聊最近 N 条双方消息，只填入输入框，不自动发送。
-- AI 分析：指定日期 / 全部聊天，统计双方消息、文字、图片、视频、红包、转账、小程序等类型。
-- AI 接口、模型、提示词和现有设置不变；不会重新加入 wxid、自动回复或计时弹窗。
+- 微信「设置」→ 第一组「WeChatGPT」→ 打开面板。
+- 装有插件管理器时，另外出现在插件列表（此时微信设置页不再重复出现）。
 
-## 打包名称
+面板分两张卡片：
 
-- Theos tweak 名称及生成的动态库：`zhushou`（`zhushou.dylib`）。
-- 软件包显示名：`zhushou`，版本 `0.8.3`。
-- `build.sh` 会在生成标准 `.deb` 后额外复制为 `packages/zhushou_0.8.3_*.deb`，方便使用你要求的名称。
-- **Package ID 仍保持 `com.standalone.wechatgpt`**，用于兼容旧版升级，不重置配置。
-- 微信设置界面标题保持「聊天助手」。
+1. 功能面板：启用插件、长按菜单 AI 回复、读取聊天记录、读取条数。
+2. AI 接口：服务商与模型、回复消息前缀、提示词模板。
 
-## 编译
+服务商页里点一行设为当前服务商（行首 ✓），点行尾按钮编辑，左滑删除；编辑页可「从接口拉取模型」「验证 API」。
 
-```bash
-export THEOS=~/theos
-bash build.sh
-python3 tests/check_v083.py
+## 工程结构
+
+```text
+WeChatGPT/
+|-- AxsWeChatGPT.plist           注入过滤器（com.tencent.xin）
+|-- AxsWeChatGPTBuild.mk         SDK / 部署版本 / 架构
+|-- Makefile
+|-- control                      包信息与中文说明
+|-- tweak.json                   模块清单（供 doctor 检查）
+|-- build.sh                     根证书方案打包（rootful/rootless/roothide）
+|-- Hooks/
+|   |-- AxsWeChatGPTMain.xm              %ctor 与菜单安装
+|   |-- AxsWeChatGPTEntrySettings.xm     微信设置页入口
+|   `-- AxsWeChatGPTEntryPlugins.xm      插件列表入口
+|-- Headers/
+|   `-- AxsWeChatGPTPrivate.h            共享提示框与配置引用
+|-- Sources/
+|   |-- AxsWeChatGPTConfig.h/.m          配置读写（域 com.axs.wechatgpt）
+|   |-- AxsWeChatGPTClient.h/.m          OpenAI 兼容接口
+|   |-- AxsWeChatGPTWeChatBridge.h/.m    微信私有接口只读封装
+|   |-- AxsWeChatGPTMessageReply.h/.m    回复与分析流程
+|   |-- AxsWeChatGPTMenuInjector.h/.m    原生长按菜单注入
+|   `-- AxsWeChatGPTEntryRouter.h/.m     面板统一路由
+`-- Controllers/
+    |-- AxsWeChatGPTRootViewController.h/.m            卡片式主面板
+    |-- AxsWeChatGPTSettingItem/SettingCell/CardCell   卡片行与卡片
+    |-- AxsWeChatGPTCardTableViewController.h/.m       卡片列表基类
+    |-- AxsWeChatGPTProvidersViewController.h/.m       服务商列表
+    |-- AxsWeChatGPTProviderEditorViewController.h/.m  服务商编辑
+    |-- AxsWeChatGPTModelPickerViewController.h/.m     模型选择
+    |-- AxsWeChatGPTAnalysisViewController.h/.m        AI 分析页
+    `-- AxsWeChatGPTPromptsViewController.h/.m         提示词模板
 ```
 
-本环境未安装 Theos/iOS SDK，也没有目标微信的运行时菜单对象，因此仅完成源码静态检查；原生图标布局需要在目标微信版本真机测试。升级前请禁用或卸载其他同时注入微信的旧版。
+约定：自定义类、文件名用 `AxsWeChatGPT` 前缀，C 函数与自有 selector 用 `axs_wechatgpt_` 前缀；只有面板写配置，Hook 只读。
+
+## 构建
+
+```sh
+export THEOS=~/theos
+bash build.sh              # 默认 rootless
+bash build.sh all          # rootful + rootless + roothide
+```
+
+静态检查用 axs-wechat-tweaks skill 的 `scripts/doctor.py <工程目录>`（不在本工程内）。
+
+CI：`.github/workflows/build.yml`。
+
+静态检查通过不代表 Theos 编译或真机验证通过；菜单注入与面板入口依赖微信私有类，换微信版本需要重新核对。

@@ -1,17 +1,17 @@
-#import "DGPTAnalysisVC.h"
-#import "DGPTWeChatBridge.h"
-#import "DGPTClient.h"
+#import "AxsWeChatGPTAnalysisViewController.h"
+#import "AxsWeChatGPTWeChatBridge.h"
+#import "AxsWeChatGPTClient.h"
 
 // Prevent runaway memory use if a chat has hundreds of thousands of records.
 // If reached, the UI explicitly marks counts as PARTIAL rather than "all".
-static const NSUInteger kDGPTAnalysisSafetyRecords = 100000;
-static const NSUInteger kDGPTAnalysisPageSize = 200;
-static const NSUInteger kDGPTAnalysisChunkChars = 11000;
+static const NSUInteger kAxsWeChatGPTAnalysisSafetyRecords = 100000;
+static const NSUInteger kAxsWeChatGPTAnalysisPageSize = 200;
+static const NSUInteger kAxsWeChatGPTAnalysisChunkChars = 11000;
 
-static NSString *DGPTTrimmed(NSString *s) {
+static NSString *axs_wechatgpt_trimmed(NSString *s) {
     return [s stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
 }
-static UIViewController *DGPTAnalysisHost(UIWindow *window) {
+static UIViewController *axs_wechatgpt_analysisHost(UIWindow *window) {
     UIViewController *host = window.rootViewController;
     for (NSUInteger i=0; i<20 && host; ++i) {
         if (host.presentedViewController) host = host.presentedViewController;
@@ -23,7 +23,7 @@ static UIViewController *DGPTAnalysisHost(UIWindow *window) {
     }
     return host;
 }
-static UILabel *DGPTAnalysisLabel(NSString *text, CGFloat fontSize, BOOL bold) {
+static UILabel *axs_wechatgpt_analysisLabel(NSString *text, CGFloat fontSize, BOOL bold) {
     UILabel *label = [UILabel new];
     label.text = text;
     label.font = bold ? [UIFont boldSystemFontOfSize:fontSize] : [UIFont systemFontOfSize:fontSize];
@@ -31,7 +31,7 @@ static UILabel *DGPTAnalysisLabel(NSString *text, CGFloat fontSize, BOOL bold) {
     label.numberOfLines = 0;
     return label;
 }
-static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
+static UIButton *axs_wechatgpt_analysisButton(NSString *title, id target, SEL selector) {
     UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
     [button setTitle:title forState:UIControlStateNormal];
     button.titleLabel.font = [UIFont boldSystemFontOfSize:16];
@@ -42,10 +42,10 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
     return button;
 }
 
-@interface DGPTAnalysisVC () <UITextViewDelegate>
+@interface AxsWeChatGPTAnalysisViewController () <UITextViewDelegate>
 @end
 
-@implementation DGPTAnalysisVC {
+@implementation AxsWeChatGPTAnalysisViewController {
     NSString *_session;
     BOOL _isGroup;
     UISegmentedControl *_range;
@@ -87,9 +87,9 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
     }
     NSString *session = context[@"session"];
     if (![session isKindOfClass:NSString.class] || !session.length || !window) return;
-    UIViewController *host = DGPTAnalysisHost(window);
+    UIViewController *host = axs_wechatgpt_analysisHost(window);
     if (!host || host.isBeingPresented || host.isBeingDismissed) return;
-    DGPTAnalysisVC *vc = [DGPTAnalysisVC new];
+    AxsWeChatGPTAnalysisViewController *vc = [AxsWeChatGPTAnalysisViewController new];
     vc->_session = [session copy];
     vc->_isGroup = [context[@"isGroup"] boolValue];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
@@ -141,7 +141,7 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
     _question.textContainerInset = UIEdgeInsetsMake(10, 8, 10, 8);
     _question.text = @"";
     _question.delegate = self;
-    _questionPlaceholder = DGPTAnalysisLabel(@"想让AI分析什么？", 15, NO);
+    _questionPlaceholder = axs_wechatgpt_analysisLabel(@"想让AI分析什么？", 15, NO);
     _questionPlaceholder.textColor = UIColor.placeholderTextColor;
     _questionPlaceholder.userInteractionEnabled = NO;
     _questionPlaceholder.translatesAutoresizingMaskIntoConstraints = NO;
@@ -153,20 +153,20 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
     ]];
     [_question.heightAnchor constraintEqualToConstant:100].active = YES;
     [stack addArrangedSubview:_question];
-    _readButton = DGPTAnalysisButton(@"统计消息", self, @selector(readStatistics));
-    _analyzeButton = DGPTAnalysisButton(@"确认分析", self, @selector(confirmAnalysis));
-    _cancelButton = DGPTAnalysisButton(@"取消当前任务", self, @selector(cancelTask));
+    _readButton = axs_wechatgpt_analysisButton(@"统计消息", self, @selector(readStatistics));
+    _analyzeButton = axs_wechatgpt_analysisButton(@"确认分析", self, @selector(confirmAnalysis));
+    _cancelButton = axs_wechatgpt_analysisButton(@"取消当前任务", self, @selector(cancelTask));
     _cancelButton.hidden = YES;
     [stack addArrangedSubview:_readButton];
     [stack addArrangedSubview:_analyzeButton];
     [stack addArrangedSubview:_cancelButton];
-    _stats = DGPTAnalysisLabel(@"", 15, NO);
+    _stats = axs_wechatgpt_analysisLabel(@"", 15, NO);
     _stats.hidden = YES;
     [stack addArrangedSubview:_stats];
-    _progress = DGPTAnalysisLabel(@"", 13, NO);
+    _progress = axs_wechatgpt_analysisLabel(@"", 13, NO);
     _progress.textColor = UIColor.secondaryLabelColor;
     [stack addArrangedSubview:_progress];
-    _answerTitle = DGPTAnalysisLabel(@"AI 分析结果", 16, YES);
+    _answerTitle = axs_wechatgpt_analysisLabel(@"AI 分析结果", 16, YES);
     _answerTitle.hidden = YES;
     [stack addArrangedSubview:_answerTitle];
     _answer = [UITextView new];
@@ -185,7 +185,7 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
 
 - (void)closePage { ++_serial; [self dismissViewControllerAnimated:YES completion:nil]; }
 - (void)updateQuestionPlaceholder {
-    _questionPlaceholder.hidden = _question.isFirstResponder || DGPTTrimmed(_question.text ?: @"").length > 0;
+    _questionPlaceholder.hidden = _question.isFirstResponder || axs_wechatgpt_trimmed(_question.text ?: @"").length > 0;
 }
 - (void)textViewDidBeginEditing:(UITextView *)textView {
     if (textView == _question) [self updateQuestionPlaceholder];
@@ -250,7 +250,7 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
 - (void)readStatistics { [self beginReadAndAnalyze:NO]; }
 - (void)confirmAnalysis {
     if (_working) return;
-    _customQuestion = DGPTTrimmed(_question.text ?: @"");
+    _customQuestion = axs_wechatgpt_trimmed(_question.text ?: @"");
     if (!_customQuestion.length) _customQuestion = @"分析主要话题、双方态度与待办事项。";
     if (_statsReady && [_signature isEqualToString:[self currentSignature]]) {
         [self startAnalysis];
@@ -284,8 +284,8 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
 }
 - (void)fetchNextPageForSerial:(NSUInteger)serial {
     if (serial != _serial) return;
-    NSUInteger pageLimit = kDGPTAnalysisPageSize;
-    NSDictionary *page = [DGPTWeChatBridge historyPageForSession:_session limit:pageLimit fromID:_cursorID fromTime:_cursorTime];
+    NSUInteger pageLimit = kAxsWeChatGPTAnalysisPageSize;
+    NSDictionary *page = [AxsWeChatGPTWeChatBridge historyPageForSession:_session limit:pageLimit fromID:_cursorID fromTime:_cursorTime];
     NSString *error = page[@"error"];
     if (error.length) { [self endReadCompleted:NO note:error]; return; }
     ++_pages;
@@ -315,7 +315,7 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
     if (remaining == 0 || (rawCount < pageLimit && remaining < 0)) {
         [self endReadCompleted:YES note:@""]; return;
     }
-    if (_rawReturned >= kDGPTAnalysisSafetyRecords) {
+    if (_rawReturned >= kAxsWeChatGPTAnalysisSafetyRecords) {
         [self endReadCompleted:NO note:@"达到 100000 条安全保护上限；统计和分析仅涵盖已读取部分。"];
         return;
     }
@@ -403,7 +403,7 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
         NSString *date = [fmt stringFromDate:[NSDate dateWithTimeIntervalSince1970:[r[@"timestamp"] longLongValue]]] ?: @"时间未知";
         NSString *line = [NSString stringWithFormat:@"[%@] %@：%@%@\n", date, speaker, content,
             [r[@"truncated"] boolValue] ? @"（此条过长，已截断）" : @""];
-        if (current.length && current.length+line.length > kDGPTAnalysisChunkChars) {
+        if (current.length && current.length+line.length > kAxsWeChatGPTAnalysisChunkChars) {
             [chunks addObject:[current copy]];
             [current setString:@""];
         }
@@ -414,7 +414,7 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
 }
 - (void)startAnalysis {
     if (_working || !_statsReady) return;
-    _customQuestion = DGPTTrimmed(_question.text ?: @"");
+    _customQuestion = axs_wechatgpt_trimmed(_question.text ?: @"");
     if (!_customQuestion.length) _customQuestion = @"分析主要话题、双方态度与待办事项。";
     _chunks = [self buildChunks];
     if (!_chunks.count) { [self displayError:@"该范围没有可供分析的聊天记录。"];
@@ -439,7 +439,7 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
         @"请继续更新对聊天记录的事实摘要。之前摘要：\n%@\n\n新增聊天记录：\n%@\n\n"
          @"保留重要话题、时间、双方表态、待办事项、矛盾与待核实之处；不捏造信息；摘要控制在约2000汉字内。",
         _partialSummary.length ? _partialSummary : @"（首次）", chunk];
-    [[DGPTClient shared] askForAnalysisWithMessages:@[
+    [[AxsWeChatGPTClient shared] askForAnalysisWithMessages:@[
         @{ @"role":@"system", @"content":@"你是严谨的聊天记录分析助手。将分段对话累积为可靠的阶段摘要，避免把我的话误当对方的话。" },
         @{ @"role":@"user", @"content":question }
     ] completion:^(NSString *response, NSError *error) {
@@ -466,7 +466,7 @@ static UIButton *DGPTAnalysisButton(NSString *title, id target, SEL selector) {
          @"请用中文明确回答分析问题，严格区分我和对方。方括号内的图片/视频/语音/转账/红包等只表示消息类型和出现次数，不代表已读取媒体内容、支付金额或交易结果。若历史不完整请说明结论只针对已读部分。",
         _scopeTitle, status, _stats.text ?: @"", _customQuestion ?: @"请分析聊天记录", 
         _chunks.count == 1 ? @"原始聊天" : @"逐段累计的聊天摘要", history ?: @""];
-    [[DGPTClient shared] askForAnalysisWithMessages:@[
+    [[AxsWeChatGPTClient shared] askForAnalysisWithMessages:@[
         @{ @"role":@"system", @"content":@"你是微信聊天记录分析助手，引用对话时要精确区分“我”“对方”和方向待确认的消息；无法确认方向时不要猜测。" },
         @{ @"role":@"user", @"content":question }
     ] completion:^(NSString *response, NSError *error) {
